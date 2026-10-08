@@ -1,0 +1,110 @@
+import { NextResponse } from 'next/server';
+import db, { initDB } from '@/lib/db';
+import { requireAdmin } from '@/lib/auth';
+
+initDB();
+
+export async function GET(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const jamaah_id = searchParams.get('jamaah_id');
+
+    const master = db.prepare('SELECT * FROM checklist_master ORDER BY category, item_code').all();
+
+    if (jamaah_id) {
+      const items = db.prepare(`
+        SELECT cm.*, COALESCE(jc.status, 'BELUM') as status, jc.notes, jc.updated_at
+        FROM checklist_master cm
+        LEFT JOIN jamaah_checklist jc ON cm.id = jc.checklist_master_id AND jc.jamaah_id = ?
+        ORDER BY cm.category, cm.item_code
+      `).all(jamaah_id);
+      return NextResponse.json({ success: true, master, items });
+    }
+
+    return NextResponse.json({ success: true, master });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const body = await request.json();
+    const { action } = body;
+
+    if (action === 'UPDATE_STATUS') {
+      const { jamaah_id, checklist_master_id, status, notes } = body;
+      if (!jamaah_id || !checklist_master_id || !status) {
+        return NextResponse.json({ success: false, message: 'Data tidak lengkap' }, { status: 400 });
+      }
+
+      // Check if linked to inventory
+      const masterItem = db.prepare('SELECT * FROM checklist_master WHERE id = ?').get(checklist_master_id) as any;
+      const current = db.prepare('SELECT status FROM jamaah_checklist WHERE jamaah_id = ? AND checklist_master_id = ?').get(jamaah_id, checklist_master_id) as any;
+      const oldStatus = current ? current.status : 'BELUM';
+
+      // Upsert status
+      db.prepare(`
+        INSERT INTO jamaah_checklist (jamaah_id, checklist_master_id, status, notes, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(jamaah_id, checklist_master_id) DO UPDATE SET
+        status = excluded.status, notes = excluded.notes, updated_at = CURRENT_TIMESTAMP
+      `).run(jamaah_id, checklist_master_id, status, notes || '');
+
+      // Inventory adjustment if linked and status changed to SUDAH / DIAMBIL from BELUM (or vice versa)
+      if (masterItem && masterItem.is_inventory_linked && masterItem.inventory_item_id) {
+        if (oldStatus === 'BELUM' && (status === 'SUDAH' || status === 'DIAMBIL')) {
+          // Reduce inventory stock
+          db.prepare('UPDATE inventory_items SET stock_total = MAX(0, stock_total - 1) WHERE id = ?').run(masterItem.inventory_item_id);
+          // Record handover log for Stock Ledger report
+          db.prepare(`
+            INSERT INTO inventory_handover (item_id, qty, transaction_id, handed_at, notes)
+            VALUES (?, 1, NULL, CURRENT_TIMESTAMP, ?)
+          `).run(masterItem.inventory_item_id, 'Diserahkan ke jamaah - Checklist Kelengkapan');
+        } else if ((oldStatus === 'SUDAH' || oldStatus === 'DIAMBIL') && status === 'BELUM') {
+          // Restore inventory stock
+          db.prepare('UPDATE inventory_items SET stock_total = stock_total + 1 WHERE id = ?').run(masterItem.inventory_item_id);
+        }
+      }
+
+      return NextResponse.json({ success: true, message: 'Status checklist berhasil diperbarui' });
+    }
+
+    if (action === 'SAVE_MASTER') {
+      const { id, category, item_code, item_name, is_inventory_linked, inventory_item_id, is_mandatory } = body;
+      if (!category || !item_code || !item_name) {
+        return NextResponse.json({ success: false, message: 'Kategori, kode, dan nama item wajib diisi' }, { status: 400 });
+      }
+
+      if (id) {
+        db.prepare(`
+          UPDATE checklist_master SET category = ?, item_code = ?, item_name = ?, is_inventory_linked = ?, inventory_item_id = ?, is_mandatory = ?
+          WHERE id = ?
+        `).run(category, item_code, item_name, is_inventory_linked ? 1 : 0, inventory_item_id || null, is_mandatory ? 1 : 0, id);
+        return NextResponse.json({ success: true, message: 'Master checklist diperbarui' });
+      } else {
+        db.prepare(`
+          INSERT INTO checklist_master (category, item_code, item_name, is_inventory_linked, inventory_item_id, is_mandatory)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(category, item_code, item_name, is_inventory_linked ? 1 : 0, inventory_item_id || null, is_mandatory ? 1 : 0);
+        return NextResponse.json({ success: true, message: 'Master checklist ditambahkan' });
+      }
+    }
+
+    if (action === 'DELETE_MASTER') {
+      const { id } = body;
+      db.prepare('DELETE FROM checklist_master WHERE id = ?').run(id);
+      return NextResponse.json({ success: true, message: 'Master checklist dihapus' });
+    }
+
+    return NextResponse.json({ success: false, message: 'Aksi tidak dikenali' }, { status: 400 });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+  }
+}

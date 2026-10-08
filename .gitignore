@@ -1,0 +1,34 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+
+# produksi
+/build
+
+# WAJIB: berkas rahasia & data lokal jangan pernah ikut ter-commit.
+# .env.local memuat AUTH_SECRET penanda tangan sesi admin.
+.env
+.env.local
+.env.*.local
+
+# database & unggahan pengguna
+/data/*.db
+/data/*.db-journal
+/data/*.db-wal
+/data/*.db-shm
+/public/uploads/
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.vercel

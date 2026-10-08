@@ -1,0 +1,126 @@
+{
+  "_catatan": [
+    "Nilai harapan = isi yang DITULIS pada gambar fixture (dibuat tests/ocr/make-fixtures.py).",
+    "docType null = tidak dikirim, menguji deteksi otomatis. Tambahkan kasus baru sesuai kebutuhan.",
+    "Kunci field yang diakhiri _contains berarti pencocokan sebagian (huruf besar/kecil diabaikan)."
+  ],
+  "cases": [
+    {
+      "file": "ktp_rapat.png",
+      "docType": "KTP",
+      "label": "KTP — NIK rapat tanpa spasi",
+      "expect": {
+        "nik": "3174012508900001",
+        "fullName": "BUDI SANTOSO",
+        "birthPlace": "JAKARTA",
+        "birthDate": "1990-08-25",
+        "gender": "L",
+        "address_contains": "MELATI"
+      }
+    },
+    {
+      "file": "ktp_spasi.png",
+      "docType": "KTP",
+      "label": "KTP — NIK berspasi (format cetak asli)",
+      "expect": {
+        "nik": "3204123456780001",
+        "fullName": "SITI AMINAH",
+        "birthPlace": "BANDUNG",
+        "birthDate": "1995-05-12",
+        "gender": "P",
+        "address_contains": "MERDEKA"
+      }
+    },
+    {
+      "file": "ktp_miring.png",
+      "docType": "KTP",
+      "label": "KTP — foto miring + noise",
+      "expect": {
+        "nik": "3578112233440002",
+        "fullName": "AHMAD FAUZI",
+        "birthPlace": "SURABAYA",
+        "birthDate": "1988-11-03",
+        "gender": "L",
+        "address_contains": "DARMO"
+      }
+    },
+    {
+      "file": "kk.png",
+      "docType": "KK",
+      "label": "KK — jenis dokumen dipilih KK",
+      "expect": {
+        "noKK": "3204123456780009",
+        "nik": "3174012508900001",
+        "fullName": "BUDI SANTOSO",
+        "address_contains": "MELATI"
+      }
+    },
+    {
+      "file": "kk.png",
+      "docType": null,
+      "label": "KK — tanpa docType (deteksi otomatis)",
+      "expect": {
+        "noKK": "3204123456780009",
+        "fullName": "BUDI SANTOSO"
+      }
+    },
+    {
+      "file": "ktp_rapat.png",
+      "docType": null,
+      "label": "KTP — tanpa docType (deteksi otomatis)",
+      "expect": {
+        "nik": "3174012508900001",
+        "fullName": "BUDI SANTOSO"
+      }
+    },
+    {
+      "file": "kk.png",
+      "docType": "PASPOR",
+      "label": "KK tapi pengguna salah pilih Paspor",
+      "expect": {
+        "noKK": "3204123456780009",
+        "fullName": "BUDI SANTOSO"
+      }
+    },
+    {
+      "file": "paspor.png",
+      "docType": "PASPOR",
+      "label": "Paspor — zona MRZ",
+      "expect": {
+        "passportNumber": "C12345678",
+        "birthDate": "1990-08-25",
+        "gender": "L",
+        "passportExpiry": "2030-08-15"
+      }
+    },
+    {
+      "file": "ktp_kecil.jpg",
+      "docType": "KTP",
+      "label": "KTP versi foto HP resolusi kecil (uji pra-proses gambar)",
+      "expect": {
+        "nik": "3174012508900001",
+        "fullName": "BUDI SANTOSO",
+        "birthPlace": "JAKARTA",
+        "birthDate": "1990-08-25",
+        "gender": "L",
+        "address_contains": "MELATI"
+      }
+    },
+    {
+      "file": "ktp_kecil2.jpg",
+      "docType": "KTP",
+      "label": "KTP — foto HP kecil, alamat dengan kata bergabung + RT/RW 000/000",
+      "expect": {
+        "nik": "3674072257025099",
+        "fullName": "DEWI ANGRAINI",
+        "birthPlace": "MEDAN",
+        "birthDate": "1991-09-05",
+        "gender": "P",
+        "address_contains": [
+          "TANAH RENDAH",
+          "AIR PUTIH"
+        ]
+      }
+    }
+  ]
+}
