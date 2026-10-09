@@ -1606,13 +1606,18 @@ function PembayaranTab() {
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [recentPending, setRecentPending] = useState<any[]>([]);
+  
+  // Centered Modal State for Verification
+  const [selectedPayment, setSelectedPayment] = useState<any>(null);
+  const [rejectNotes, setRejectNotes] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   const loadPending = async () => {
     try {
       const r = await fetch('/api/admin/transactions');
       const d = await r.json();
       if (d.success) {
-        const pendingList = (d.transactions || []).filter((t: any) => t.status === 'DP' || t.status === 'PENDING').slice(0, 10);
+        const pendingList = (d.transactions || []).filter((t: any) => t.status === 'DP' || t.status === 'PENDING').slice(0, 15);
         setRecentPending(pendingList);
       }
     } catch {}
@@ -1632,40 +1637,57 @@ function PembayaranTab() {
     setLoading(false);
   };
 
-  const verify = async (paymentId: number, action: 'APPROVE' | 'REJECT') => {
-    const catatan = action === 'REJECT' ? (prompt('Alasan penolakan (opsional):') || '') : '';
-    const r = await fetch('/api/payments/verify', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payment_id: paymentId, action, notes: catatan }),
-    });
-    const d = await r.json();
-    (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, d.success ? 'success' : 'error') : alert(d.message || (d.success ? 'Berhasil' : 'Gagal'));
-    if (d.success) {
-      if (kode) load(kode);
-      loadPending();
+  const handleVerifyAction = async (action: 'APPROVE' | 'REJECT') => {
+    if (!selectedPayment) return;
+    setActionLoading(true);
+    try {
+      const r = await fetch('/api/payments/verify', {
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          payment_id: selectedPayment.id, 
+          action, 
+          notes: action === 'REJECT' ? rejectNotes : 'Pembayaran disetujui & diverifikasi' 
+        }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        (window as any).__showAdminToast?.(d.message, 'success');
+        setSelectedPayment(null);
+        setRejectNotes('');
+        if (kode) load(kode);
+        loadPending();
+      } else {
+        alert(d.message || 'Gagal memproses verifikasi');
+      }
+    } catch (e: any) {
+      alert(e.message || 'Terjadi kesalahan jaringan');
     }
+    setActionLoading(false);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-6xl">
       {/* Search Header */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-3">
         <div>
-          <h3 className="text-base font-black text-slate-900">Verifikasi Pembayaran & Transfer</h3>
-          <p className="text-xs text-slate-500">Periksa bukti transfer jamaah dan setujui atau tolak pembayaran.</p>
+          <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-slate-900"></span> Verifikasi Pembayaran & Transfer Jamaah
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">Periksa bukti transfer dan lakukan verifikasi pembayaran dengan standar Apple/Linear minimalist.</p>
         </div>
         <div className="flex gap-2">
           <input
             value={kode}
             onChange={e => setKode(e.target.value.toUpperCase())}
             placeholder="Masukkan Kode Booking (Cth: UMR-2610-4821)"
-            className="flex-1 border rounded-xl px-4 py-2.5 text-xs font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none"
+            className="flex-1 border border-slate-300 rounded-xl px-4 py-2.5 text-xs font-mono text-slate-900 focus:ring-2 focus:ring-slate-900 focus:outline-none"
             onKeyDown={e => e.key === 'Enter' && load(kode)}
           />
           <button
             onClick={() => load(kode)}
             disabled={loading}
-            className="bg-slate-900 text-white font-bold px-6 py-2.5 rounded-xl text-xs disabled:opacity-50 transition shadow-xs hover:bg-slate-800"
+            className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-6 py-2.5 rounded-xl text-xs disabled:opacity-50 transition shadow-xs"
           >
             {loading ? 'Mencari...' : 'Cari Booking'}
           </button>
@@ -1678,7 +1700,7 @@ function PembayaranTab() {
         <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-5 animate-in fade-in duration-200">
           <div className="flex flex-wrap justify-between items-start gap-4 border-b border-slate-100 pb-4">
             <div>
-              <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md">Booking Code</span>
+              <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md font-mono">Booking Code</span>
               <h2 className="text-lg font-black text-slate-900 mt-1">{data.booking.booking_code}</h2>
               <p className="text-xs font-bold text-slate-700 mt-0.5">{data.booking.full_name} <span className="font-normal text-slate-500">(NIK: {data.booking.nik})</span></p>
             </div>
@@ -1689,7 +1711,7 @@ function PembayaranTab() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200/60">
-            <div><span className="text-slate-500 font-medium">Paket Perjalanan:</span><p className="font-bold text-slate-900 mt-0.5">{data.booking.package_name} ({data.booking.batch_name})</p></div>
+            <div><span className="text-slate-500 font-medium">Paket Perjalanan:</span><p className="font-bold text-slate-900 mt-0.5">{data.booking.package_name}</p></div>
             <div><span className="text-slate-500 font-medium">Total Biaya:</span><p className="font-bold font-mono text-slate-900 mt-0.5">{fmtRp(data.booking.total_amount)}</p></div>
             <div><span className="text-slate-500 font-medium">Sisa Tagihan:</span><p className="font-bold font-mono text-rose-600 mt-0.5">{fmtRp(data.booking.remaining_amount)}</p></div>
           </div>
@@ -1702,8 +1724,8 @@ function PembayaranTab() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs font-bold text-slate-900">{pay.receipt_number}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${(pay.status === 'VERIFIED' || pay.status === 'APPROVED') ? 'bg-emerald-50 text-emerald-700' : pay.status === 'REJECTED' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
-                        {pay.status}
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${(pay.status === 'VERIFIED' || pay.status === 'APPROVED') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : pay.status === 'REJECTED' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                        {pay.status === 'APPROVED' ? 'APPROVED' : pay.status}
                       </span>
                     </div>
                     <p className="text-xs font-bold text-slate-700">{pay.payment_phase} — <span className="font-mono text-emerald-600">{fmtRp(pay.amount)}</span></p>
@@ -1716,19 +1738,17 @@ function PembayaranTab() {
                   </div>
 
                   {pay.status === 'PENDING' && (
-                    <div className="flex gap-2">
-                      <button onClick={() => verify(pay.id, 'APPROVE')} className="bg-slate-900 text-white font-bold px-4 py-2 rounded-xl text-xs hover:bg-slate-800 transition">
-                        Setujui
-                      </button>
-                      <button onClick={() => verify(pay.id, 'REJECT')} className="bg-rose-50 text-rose-700 font-bold px-4 py-2 rounded-xl text-xs hover:bg-rose-100 transition">
-                        Tolak
-                      </button>
-                    </div>
+                    <button 
+                      onClick={() => setSelectedPayment(pay)} 
+                      className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition shadow-xs flex items-center gap-1.5"
+                    >
+                      <span>Verifikasi Pembayaran</span>
+                    </button>
                   )}
                 </div>
               ))}
               {(!data.payments || data.payments.length === 0) && (
-                <p className="text-xs text-slate-400 py-4 text-center">Belum ada riwayat pembayaran untuk booking ini.</p>
+                <p className="text-xs text-slate-400 py-6 text-center">Belum ada riwayat pembayaran untuk booking ini.</p>
               )}
             </div>
           </div>
@@ -1737,7 +1757,7 @@ function PembayaranTab() {
 
       {/* Recent Pending Verification Quick List */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
-        <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Antrean Booking Pending / Belum Lunas</h4>
+        <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Antrean Pembayaran Pending / Belum Lunas</h4>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -1759,7 +1779,7 @@ function PembayaranTab() {
                   <td className="p-3 text-right font-mono font-bold text-rose-600">{fmtRp(t.remaining_amount)}</td>
                   <td className="p-3"><StatusBadge s={t.status}/></td>
                   <td className="p-3 text-right">
-                    <button onClick={() => { setKode(t.booking_code); load(t.booking_code); }} className="text-indigo-600 hover:underline font-bold">Verifikasi</button>
+                    <button onClick={() => { setKode(t.booking_code); load(t.booking_code); }} className="text-indigo-600 hover:underline font-bold">Pilih & Periksa</button>
                   </td>
                 </tr>
               ))}
@@ -1770,6 +1790,75 @@ function PembayaranTab() {
           </table>
         </div>
       </div>
+
+      {/* Centered Modal Pop-up for Payment Verification */}
+      {selectedPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-lg w-full p-6 space-y-6">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-base font-black text-slate-900">Verifikasi Pembayaran Jamaah</h3>
+                <p className="text-xs text-slate-500 font-mono mt-0.5">Kwitansi: {selectedPayment.receipt_number}</p>
+              </div>
+              <button onClick={() => setSelectedPayment(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+            </div>
+
+            <div className="space-y-4 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200/60">
+              <div className="flex justify-between py-1 border-b border-slate-200/50">
+                <span className="text-slate-500 font-medium">Nominal Pembayaran:</span>
+                <span className="font-mono font-black text-emerald-600 text-sm">{fmtRp(selectedPayment.amount)}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-200/50">
+                <span className="text-slate-500 font-medium">Tahapan / Jenis:</span>
+                <span className="font-bold text-slate-800">{selectedPayment.payment_phase}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-200/50">
+                <span className="text-slate-500 font-medium">Metode Transfer:</span>
+                <span className="font-bold text-slate-800">{selectedPayment.payment_type} {selectedPayment.bank_name ? '(' + selectedPayment.bank_name + ')' : ''}</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-slate-500 font-medium">Tanggal Upload:</span>
+                <span className="font-mono text-slate-800">{selectedPayment.created_at}</span>
+              </div>
+              {selectedPayment.proof_url && (
+                <div className="pt-2 border-t border-slate-200/50 text-center">
+                  <a href={selectedPayment.proof_url} target="_blank" rel="noreferrer" className="inline-block bg-white border border-slate-300 text-indigo-600 hover:bg-slate-100 font-bold px-4 py-2 rounded-xl text-xs transition shadow-xs">
+                    🔍 Buka & Perbesar Bukti Transfer di Tab Baru
+                  </a>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Catatan Penolakan (Opsional / Wajib jika Ditolak)</label>
+              <input
+                type="text"
+                value={rejectNotes}
+                onChange={e => setRejectNotes(e.target.value)}
+                placeholder="Cth: Bukti transfer tidak valid / nominal tidak sesuai"
+                className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-slate-900 focus:outline-none"
+              />
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                onClick={() => handleVerifyAction('REJECT')}
+                disabled={actionLoading}
+                className="px-5 py-2.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs transition disabled:opacity-50"
+              >
+                {actionLoading ? 'Memproses...' : 'Tolak Pembayaran'}
+              </button>
+              <button
+                onClick={() => handleVerifyAction('APPROVE')}
+                disabled={actionLoading}
+                className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-xs disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {actionLoading ? 'Memproses...' : '✓ Setujui Pembayaran'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
