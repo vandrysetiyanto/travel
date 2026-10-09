@@ -1904,9 +1904,9 @@ function PengaturanTab() {
           <button
             type="submit"
             disabled={loading}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition shadow-xs disabled:opacity-50"
+            className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-4 py-2 rounded-xl text-xs transition disabled:opacity-50"
           >
-            {loading ? 'Menyimpan...' : ' Simpan Profil'}
+            {loading ? '...' : 'Simpan'}
           </button>
         </div>
 
