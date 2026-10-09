@@ -16,8 +16,17 @@ export async function GET(req: Request) {
     }
 
     const tx = db
-      .prepare('SELECT t.id, t.booking_code, j.full_name FROM transactions t JOIN master_jamaah j ON j.id = t.jamaah_id WHERE t.booking_code = ?')
+      .prepare(
+        `SELECT t.*, j.nik, j.full_name, j.phone, j.email,
+                b.batch_name, p.name as package_name, p.price as unit_price
+         FROM transactions t
+         JOIN master_jamaah j ON t.jamaah_id = j.id
+         JOIN batches b ON t.batch_id = b.id
+         JOIN packages p ON b.package_id = p.id
+         WHERE t.booking_code = ?`
+      )
       .get(booking_code) as any;
+
     if (!tx) {
       return NextResponse.json({ success: false, message: 'Booking tidak ditemukan' }, { status: 404 });
     }
@@ -29,7 +38,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       success: true,
       booking_code,
-      jamaah: tx.full_name,
+      booking: tx,
       payments: rows.map(mapPayment),
     });
   } catch (error: any) {
