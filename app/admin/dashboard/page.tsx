@@ -1720,16 +1720,13 @@ function PembayaranTab() {
       const r = await fetch('/api/admin/transactions');
       const d = await r.json();
       if (d.success) {
-        // Filter transactions with DP or PENDING status to help quick inspection
         const pendingList = (d.transactions || []).filter((t: any) => t.status === 'DP' || t.status === 'PENDING').slice(0, 10);
         setRecentPending(pendingList);
       }
     } catch {}
   };
 
-  useEffect(() => {
-    loadPending();
-  }, []);
+  useEffect(() => { loadPending(); }, []);
 
   const load = async (booking: string) => {
     if (!booking) return;
@@ -1750,7 +1747,7 @@ function PembayaranTab() {
       body: JSON.stringify({ payment_id: paymentId, action, notes: catatan }),
     });
     const d = await r.json();
-    setMsg(d.message || (d.success ? 'Berhasil' : 'Gagal'));
+    (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, d.success ? 'success' : 'error') : alert(d.message || (d.success ? 'Berhasil' : 'Gagal'));
     if (d.success) {
       if (kode) load(kode);
       loadPending();
@@ -1759,144 +1756,123 @@ function PembayaranTab() {
 
   return (
     <div className="space-y-6">
-      {/* Search Bar */}
-      <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-5">
-        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2"> Cari Kode Booking untuk Verifikasi Manual</label>
+      {/* Search Header */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-3">
+        <div>
+          <h3 className="text-base font-black text-slate-900">Verifikasi Pembayaran & Transfer</h3>
+          <p className="text-xs text-slate-500">Periksa bukti transfer jamaah dan setujui atau tolak pembayaran.</p>
+        </div>
         <div className="flex gap-2">
           <input
             value={kode}
             onChange={e => setKode(e.target.value.toUpperCase())}
-            placeholder="Contoh: UMR-2610-4821 / TRX-XXXX"
-            className="flex-1 border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            placeholder="Masukkan Kode Booking (Cth: UMR-2610-4821)"
+            className="flex-1 border rounded-xl px-4 py-2.5 text-xs font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none"
             onKeyDown={e => e.key === 'Enter' && load(kode)}
           />
           <button
             onClick={() => load(kode)}
             disabled={loading}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm disabled:opacity-50 transition shadow-xs"
+            className="bg-slate-900 text-white font-bold px-6 py-2.5 rounded-xl text-xs disabled:opacity-50 transition shadow-xs hover:bg-slate-800"
           >
             {loading ? 'Mencari...' : 'Cari Booking'}
           </button>
         </div>
-        {msg && <p className="text-xs mt-2.5 font-medium text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200">{msg}</p>}
+        {msg && <p className="text-xs mt-2 font-bold text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">{msg}</p>}
       </div>
 
-      {/* Booking Details if found */}
+      {/* Booking Details Card */}
       {data && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-5 animate-in fade-in duration-200">
+          <div className="flex flex-wrap justify-between items-start gap-4 border-b border-slate-100 pb-4">
             <div>
-              <h3 className="font-extrabold text-slate-900 text-base">Bukti Pembayaran — {data.booking_code}</h3>
-              <p className="text-xs font-medium text-slate-500">Jamaah: {data.jamaah}</p>
+              <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md">Booking Code</span>
+              <h2 className="text-lg font-black text-slate-900 mt-1">{data.booking.booking_code}</h2>
+              <p className="text-xs font-bold text-slate-700 mt-0.5">{data.booking.full_name} <span className="font-normal text-slate-500">(NIK: {data.booking.nik})</span></p>
             </div>
-            <button onClick={() => setData(null)} className="text-xs text-slate-400 hover:text-slate-600"> Tutup</button>
+            <div className="text-right">
+              <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md">Status Pembayaran</span>
+              <p className="text-sm font-black text-slate-900 mt-1"><StatusBadge s={data.booking.status}/></p>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-left text-xs font-bold text-slate-600">
-                  <th className="p-3.5">No. Kuitansi</th>
-                  <th className="p-3.5">Jumlah</th>
-                  <th className="p-3.5">Jenis</th>
-                  <th className="p-3.5">Bukti Transfer</th>
-                  <th className="p-3.5">Status</th>
-                  <th className="p-3.5 text-right">Aksi Verifikasi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data.payments || []).map((p: any) => (
-                  <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition">
-                    <td className="p-3.5 font-mono text-xs">{p.payment_number}</td>
-                    <td className="p-3.5 font-bold text-slate-900">{fmtRp(p.amount)}</td>
-                    <td className="p-3.5 text-xs font-medium">{p.payment_phase}</td>
-                    <td className="p-3.5">
-                      {p.proof_image ? (
-                        <a href={p.proof_image} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline text-xs font-semibold">
-                           Buka Bukti
-                        </a>
-                      ) : (
-                        <span className="text-slate-400 text-xs">-</span>
-                      )}
-                    </td>
-                    <td className="p-3.5">
-                      <span className={'px-2.5 py-1 rounded-full text-xs font-bold ' + (p.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : p.status === 'REJECTED' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800')}>
-                        {p.status}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200/60">
+            <div><span className="text-slate-500 font-medium">Paket Perjalanan:</span><p className="font-bold text-slate-900 mt-0.5">{data.booking.package_name} ({data.booking.batch_name})</p></div>
+            <div><span className="text-slate-500 font-medium">Total Biaya:</span><p className="font-bold font-mono text-slate-900 mt-0.5">{fmtRp(data.booking.total_amount)}</p></div>
+            <div><span className="text-slate-500 font-medium">Sisa Tagihan:</span><p className="font-bold font-mono text-rose-600 mt-0.5">{fmtRp(data.booking.remaining_amount)}</p></div>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Riwayat & Bukti Pembayaran</h4>
+            <div className="space-y-3">
+              {(data.payments || []).map((pay: any) => (
+                <div key={pay.id} className="bg-white border border-slate-200/80 rounded-2xl p-4 flex flex-wrap justify-between items-center gap-4 shadow-xs hover:border-slate-300 transition">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-slate-900">{pay.receipt_number}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${pay.status === 'VERIFIED' ? 'bg-emerald-50 text-emerald-700' : pay.status === 'REJECTED' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
+                        {pay.status}
                       </span>
-                    </td>
-                    <td className="p-3.5 text-right space-x-2">
-                      {p.status !== 'APPROVED' && (
-                        <button onClick={() => verify(p.id, 'APPROVE')} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition">
-                           Setujui
-                        </button>
-                      )}
-                      {p.status !== 'REJECTED' && (
-                        <button onClick={() => verify(p.id, 'REJECT')} className="bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold px-3 py-1.5 rounded-lg border border-rose-200 transition">
-                           Tolak
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {(!data.payments || data.payments.length === 0) && (
-                  <tr><td colSpan={6} className="p-8 text-center text-slate-400">Belum ada pembayaran untuk booking ini</td></tr>
-                )}
-              </tbody>
-            </table>
+                    </div>
+                    <p className="text-xs font-bold text-slate-700">{pay.payment_phase} — <span className="font-mono text-emerald-600">{fmtRp(pay.amount)}</span></p>
+                    <p className="text-[11px] text-slate-500">Metode: {pay.payment_type} {pay.bank_name ? '(' + pay.bank_name + ')' : ''} | Tanggal: {pay.created_at}</p>
+                    {pay.proof_url && (
+                      <a href={pay.proof_url} target="_blank" rel="noreferrer" className="inline-block mt-1 text-xs font-bold text-indigo-600 hover:underline">
+                        📄 Lihat Bukti Transfer / Kwitansi &rarr;
+                      </a>
+                    )}
+                  </div>
+
+                  {pay.status === 'PENDING' && (
+                    <div className="flex gap-2">
+                      <button onClick={() => verify(pay.id, 'APPROVE')} className="bg-slate-900 text-white font-bold px-4 py-2 rounded-xl text-xs hover:bg-slate-800 transition">
+                        Setujui
+                      </button>
+                      <button onClick={() => verify(pay.id, 'REJECT')} className="bg-rose-50 text-rose-700 font-bold px-4 py-2 rounded-xl text-xs hover:bg-rose-100 transition">
+                        Tolak
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {(!data.payments || data.payments.length === 0) && (
+                <p className="text-xs text-slate-400 py-4 text-center">Belum ada riwayat pembayaran untuk booking ini.</p>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Quick Antrean Transaksi DP & Belum Lunas */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
-              <span></span> Daftar Transaksi Menunggu Pelunasan / Verifikasi
-            </h3>
-            <p className="text-xs text-slate-500">Klik &quot;Periksa&quot; pada salah satu jamaah untuk langsung membuka bukti pembayaran.</p>
-          </div>
-          <button onClick={loadPending} className="text-xs text-emerald-700 font-bold hover:underline"> Muat Ulang</button>
-        </div>
+      {/* Recent Pending Verification Quick List */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+        <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Antrean Booking Pending / Belum Lunas</h4>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs">
             <thead>
-              <tr className="bg-slate-50 text-left text-xs font-bold text-slate-600">
-                <th className="p-3.5">Kode Booking</th>
-                <th className="p-3.5">Nama Jamaah</th>
-                <th className="p-3.5">Paket</th>
-                <th className="p-3.5">Total Biaya</th>
-                <th className="p-3.5">Sudah Bayar</th>
-                <th className="p-3.5">Sisa Tagihan</th>
-                <th className="p-3.5">Status</th>
-                <th className="p-3.5 text-right">Aksi Cepat</th>
+              <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
+                <th className="p-3">Kode Booking</th>
+                <th className="p-3">Jamaah</th>
+                <th className="p-3">Paket</th>
+                <th className="p-3 text-right">Sisa Tagihan</th>
+                <th className="p-3">Status</th>
+                <th className="p-3 text-right">Aksi Cepat</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100">
               {recentPending.map((t: any) => (
-                <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition">
-                  <td className="p-3.5 font-mono text-xs font-bold text-slate-700">{t.booking_code}</td>
-                  <td className="p-3.5 font-medium text-slate-900">{t.full_name}</td>
-                  <td className="p-3.5 text-xs text-slate-600">{t.package_name}</td>
-                  <td className="p-3.5 font-medium text-slate-800">{fmtRp(t.total_amount)}</td>
-                  <td className="p-3.5 font-bold text-emerald-600">{fmtRp(t.paid_amount)}</td>
-                  <td className="p-3.5 font-bold text-rose-600">{fmtRp(t.remaining_amount)}</td>
-                  <td className="p-3.5"><StatusBadge s={t.status} /></td>
-                  <td className="p-3.5 text-right">
-                    <button
-                      onClick={() => {
-                        setKode(t.booking_code);
-                        load(t.booking_code);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-200 transition"
-                    >
-                       Periksa Pembayaran
-                    </button>
+                <tr key={t.id} className="hover:bg-slate-50 transition">
+                  <td className="p-3 font-mono text-slate-500 font-bold">{t.booking_code}</td>
+                  <td className="p-3 font-bold text-slate-900">{t.full_name}</td>
+                  <td className="p-3 text-slate-600">{t.package_name}</td>
+                  <td className="p-3 text-right font-mono font-bold text-rose-600">{fmtRp(t.remaining_amount)}</td>
+                  <td className="p-3"><StatusBadge s={t.status}/></td>
+                  <td className="p-3 text-right">
+                    <button onClick={() => { setKode(t.booking_code); load(t.booking_code); }} className="text-indigo-600 hover:underline font-bold">Verifikasi</button>
                   </td>
                 </tr>
               ))}
               {recentPending.length === 0 && (
-                <tr><td colSpan={8} className="p-8 text-center text-slate-400">Tidak ada transaksi berstatus DP atau Pending</td></tr>
+                <tr><td colSpan={6} className="text-center py-8 text-slate-400">Tidak ada antrean pembayaran pending.</td></tr>
               )}
             </tbody>
           </table>
@@ -1906,7 +1882,6 @@ function PembayaranTab() {
   );
 }
 
-/* ===================== REGISTRASI ONLINE ===================== */
 function RegistrationsTab() {
   const [list, setList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
