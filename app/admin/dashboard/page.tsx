@@ -547,65 +547,85 @@ function MasterInventaris() {
   const save = async () => {
     if(!form.code||!form.name) return alert('Kode dan Nama wajib diisi');
     const res = await fetch('/api/admin/inventory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'ADD_ITEM',...form})});
-    const d = await res.json(); (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, d.success ? 'success' : 'error') : alert(d.message); if(d.success){setShowForm(false);setForm({});load();}
+    const d = await res.json(); 
+    if(d.success){
+      alert('Barang inventaris berhasil disimpan');
+      setShowForm(false);
+      setForm({});
+      load();
+    } else {
+      alert(d.message || 'Gagal menyimpan barang');
+    }
   };
+
   const updateStock = async (id:number, stock:string) => {
     await fetch('/api/admin/inventory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'UPDATE_STOCK',item_id:id,stock_total:stock})});
     load();
   };
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-end"><button onClick={()=>{setForm({});setShowForm(true);}} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm">+ Tambah Barang</button></div>
+      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div>
+          <h3 className="text-base font-black text-slate-900">Inventaris & Stok Logistik</h3>
+          <p className="text-xs text-slate-500">Manajemen perlengkapan jamaah dan mutasi stok gudang.</p>
+        </div>
+        <button onClick={()=>{setForm({});setShowForm(true);}} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition">+ Tambah Barang</button>
+      </div>
+
       {showForm && (
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="font-bold text-gray-800 mb-4">Tambah Barang Inventaris</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <FInput label="Kode" field="code" form={form} setForm={setForm}/><FInput label="Nama Barang" field="name" form={form} setForm={setForm}/><FInput label="Kategori" field="category" form={form} setForm={setForm}/>
-            <FInput label="Stok" field="stock_total" type="number" form={form} setForm={setForm}/><FInput label="Satuan" field="unit" form={form} setForm={setForm}/>
-            <div className="md:col-span-3"><FInput label="Deskripsi" field="description" form={form} setForm={setForm}/></div>
-          </div>
-          <div className="mt-4 flex gap-2">
-            <button onClick={save} className="bg-emerald-600 text-white px-6 py-2 rounded-lg text-sm">Simpan</button>
-            <button onClick={()=>setShowForm(false)} className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg text-sm">Batal</button>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="text-base font-black text-slate-900">Tambah Barang Inventaris Baru</h3>
+              <button onClick={()=>setShowForm(false)} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
+            </div>
+            <div className="space-y-3">
+              <FInput label="Kode Barang *" field="code" form={form} setForm={setForm} placeholder="KOD-001"/>
+              <FInput label="Nama Barang *" field="name" form={form} setForm={setForm} placeholder="Koper / Kain Ihram"/>
+              <FInput label="Kategori" field="category" form={form} setForm={setForm} placeholder="Perlengkapan"/>
+              <FInput label="Stok Awal" field="stock_total" type="number" form={form} setForm={setForm} placeholder="100"/>
+            </div>
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <button onClick={()=>setShowForm(false)} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
+              <button onClick={save} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Simpan Barang</button>
+            </div>
           </div>
         </div>
       )}
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="bg-gray-50 text-left">
-            <th className="p-3">Kode</th><th className="p-3">Nama</th><th className="p-3">Kategori</th><th className="p-3">Stok</th><th className="p-3">Satuan</th><th className="p-3">Update Stok</th>
-          </tr></thead>
-          <tbody>
-            {items.map((it:any)=>{
-              const isLow = Number(it.stock_total) <= 10;
-              return (
-                <tr key={it.id} className="border-b hover:bg-gray-50">
-                  <td className="p-3 font-mono text-xs font-bold text-slate-700">{it.code}</td>
-                  <td className="p-3 font-medium text-slate-900">{it.name}</td>
-                  <td className="p-3 text-xs text-slate-600">{it.category}</td>
-                  <td className="p-3">
-                    <span className={"inline-flex items-center px-2 py-0.5 rounded text-xs font-bold " + (isLow ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-800")}>
-                      {it.stock_total} {it.unit} {isLow ? " Menipis" : ""}
-                    </span>
-                  </td>
-                  <td className="p-3 text-xs text-slate-500">{it.unit}</td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      <input type="number" inputMode="numeric" pattern="[0-9]*" defaultValue={it.stock_total} className="border border-slate-300 rounded-lg px-2.5 py-1 w-20 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" onBlur={e=>updateStock(it.id,e.target.value)}/>
-                      <span className="text-[11px] text-slate-400">auto-save</span>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {items.length===0 && <tr><td colSpan={6}><EmptyState icon="" title="Inventaris Kosong" description="Belum ada barang perlengkapan umroh terdaftar di sistem." /></td></tr>}
+
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
+              <th className="p-3">Kode</th>
+              <th className="p-3">Nama Barang</th>
+              <th className="p-3">Kategori</th>
+              <th className="p-3 text-center">Stok Total</th>
+              <th className="p-3 text-center">Stok Keluar</th>
+              <th className="p-3 text-right">Aksi Update Stok</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {items.map(it=>(
+              <tr key={it.id} className="hover:bg-slate-50 transition">
+                <td className="p-3 font-mono text-slate-500 font-bold">{it.code}</td>
+                <td className="p-3 font-bold text-slate-900">{it.name}</td>
+                <td className="p-3 text-slate-600">{it.category || '-'}</td>
+                <td className="p-3 text-center font-mono font-bold text-emerald-600">{it.stock_total}</td>
+                <td className="p-3 text-center font-mono text-slate-600">{it.stock_out || 0}</td>
+                <td className="p-3 text-right">
+                  <input type="number" defaultValue={it.stock_total} onBlur={e=>updateStock(it.id, e.target.value)} className="w-20 border rounded-lg px-2 py-1 text-xs text-center font-mono" />
+                </td>
+              </tr>
+            ))}
+            {items.length===0 && <tr><td colSpan={6} className="text-center py-8 text-slate-400">Belum ada barang perlengkapan terdaftar.</td></tr>}
           </tbody>
-        </table></div>
+        </table>
       </div>
     </div>
   );
 }
-
 
 /* ===================== TRANSAKSI TAB ===================== */
 function TransaksiTab() {
