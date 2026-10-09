@@ -3153,7 +3153,7 @@ function LabaRugiTab({ isOwner }: { isOwner: boolean }) {
   const [month, setMonth] = useState('');
   const [year, setYear] = useState('');
 
-  // Form input expense
+  // Form input expense modal
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [coaId, setCoaId] = useState('');
   const [expDate, setExpDate] = useState(new Date().toISOString().slice(0,10));
@@ -3174,207 +3174,235 @@ function LabaRugiTab({ isOwner }: { isOwner: boolean }) {
       setLoading(false);
     }).catch(() => setLoading(false));
 
-    // Load expenses & COA
     fetch('/api/admin/financial', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'GET_EXPENSES' })
     }).then(r => r.json()).then(d => {
-      if (d.success) setExpensesList(d.expenses || []);
-    });
-
-    fetch('/api/admin/financial', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'GET_COA' })
-    }).then(r => r.json()).then(d => {
       if (d.success) {
-        const bebanCoa = (d.coa || []).filter((item: any) => item.coa_group === 'Beban');
-        setCoaList(bebanCoa);
-        if (bebanCoa.length > 0 && !coaId) setCoaId(bebanCoa[0].id);
+        setExpensesList(d.expenses || []);
+        setCoaList(d.coa || []);
       }
     });
   }, [period, date, month, year]);
 
   useEffect(() => { load(); }, [load]);
 
-  const handleAddExpense = async (e: React.FormEvent) => {
+  const addExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    setMsg('');
+    if (!coaId || !amount || !desc) {
+      alert('Lengkapi akun, nominal, dan keterangan beban.');
+      return;
+    }
     const res = await fetch('/api/admin/financial', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'ADD_EXPENSE',
-        coa_account_id: coaId,
-        expense_date: expDate,
-        amount: Number(amount),
-        description: desc,
-        payment_method: method,
-        reference: ref
-      })
+      body: JSON.stringify({ action: 'ADD_EXPENSE', coa_account_id: coaId, date: expDate, amount: parseFloat(amount), description: desc, payment_method: method, reference_no: ref })
     });
-    const json = await res.json();
-    if (json.success) {
-      setMsg(json.message);
-      setAmount(''); setDesc(''); setRef('');
-      setShowAddExpense(false);
+    const d = await res.json();
+    (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, d.success ? 'success' : 'error') : alert(d.message);
+    if (d.success) {
+      setAmount(''); setDesc(''); setRef(''); setShowAddExpense(false);
       load();
-    } else {
-      setMsg('Gagal: ' + json.message);
     }
   };
 
-  const handleDeleteExpense = async (id: number) => {
-    if (!confirm('Hapus catatan beban ini?')) return;
-    await fetch('/api/admin/financial', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'DELETE_EXPENSE', id })
-    });
-    load();
-  };
-
-  if (!data) return <div className="text-center text-slate-400 py-12">Memuat laporan...</div>;
-
-  const lr = data.laba_rugi;
+  const lr = data?.laba_rugi || { total_pendapatan: 0, total_beban: 0, laba_bersih: 0 };
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow p-4 flex flex-wrap justify-between items-center gap-3">
-        <div className="flex flex-wrap gap-3 items-end">
-          <div><label className="block text-xs font-medium text-slate-600 mb-1">Periode</label>
-          <select value={period} onChange={e => setPeriod(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
-            <option value="ALL">Semua</option><option value="DAILY">Harian</option><option value="MONTHLY">Bulanan</option><option value="YEARLY">Tahunan</option>
-          </select></div>
-          {period === 'DAILY' && <div><label className="block text-xs font-medium text-slate-600 mb-1">Tanggal</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="border rounded-lg px-3 py-2 text-sm"/></div>}
-          {period === 'MONTHLY' && <div><label className="block text-xs font-medium text-slate-600 mb-1">Bulan</label><input type="month" value={month} onChange={e => setMonth(e.target.value)} className="border rounded-lg px-3 py-2 text-sm"/></div>}
-          {period === 'YEARLY' && <div><label className="block text-xs font-medium text-slate-600 mb-1">Tahun</label><input type="number" inputMode="numeric" pattern="[0-9]*" value={year} onChange={e => setYear(e.target.value)} placeholder="2026" className="border rounded-lg px-3 py-2 text-sm w-24"/></div>}
-          <button onClick={load} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-bold">Tampilkan</button>
+    <div className="space-y-6 max-w-6xl">
+      {/* Top Header & Period Filter */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-slate-900"></span> Laporan Laba Rugi & Beban Operasional
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">Analisis pendapatan jamaah, pengeluaran operasional, dan laba bersih komprehensif.</p>
         </div>
-        <button
-          onClick={() => setShowAddExpense(!showAddExpense)}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs"
-        >
-          {showAddExpense ? 'Tutup Form Beban' : '+ Catat Beban Operasional'}
-        </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex bg-slate-100 p-1 rounded-xl">
+            {['ALL', 'DAILY', 'MONTHLY', 'YEARLY'].map(p => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${period === p ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                {p === 'ALL' ? 'Semua' : p === 'DAILY' ? 'Harian' : p === 'MONTHLY' ? 'Bulanan' : 'Tahunan'}
+              </button>
+            ))}
+          </div>
+          {isOwner && (
+            <button
+              onClick={() => setShowAddExpense(true)}
+              className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow-xs flex items-center gap-1.5"
+            >
+              <span>+ Catat Beban</span>
+            </button>
+          )}
+        </div>
       </div>
-
-      {msg && <div className="bg-emerald-50 text-emerald-800 p-3 rounded-xl text-xs font-semibold">{msg}</div>}
-
-      {/* Form Input Expense */}
-      {showAddExpense && (
-        <form onSubmit={handleAddExpense} className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-4 shadow-xs">
-          <h3 className="text-sm font-black text-slate-900">Form Pencatatan Beban Operasional</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Akun Beban (COA) *</label>
-              <select value={coaId} onChange={e => setCoaId(e.target.value)} className="w-full border rounded-xl px-3 py-2 text-xs" required>
-                {coaList.map((c: any) => (
-                  <option key={c.id} value={c.id}>{c.coa_code} - {c.coa_name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal Beban *</label>
-              <input type="date" value={expDate} onChange={e => setExpDate(e.target.value)} className="w-full border rounded-xl px-3 py-2 text-xs" required />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Jumlah (Rp) *</label>
-              <input type="number" inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Contoh: 5000000" className="w-full border rounded-xl px-3 py-2 text-xs font-mono" required />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-bold text-slate-700 mb-1">Keterangan / Deskripsi *</label>
-              <input type="text" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Contoh: Pembayaran hotel Makkah batch 1" className="w-full border rounded-xl px-3 py-2 text-xs" required />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Metode Bayar</label>
-              <select value={method} onChange={e => setMethod(e.target.value)} className="w-full border rounded-xl px-3 py-2 text-xs">
-                <option value="TRANSFER">Transfer Bank</option>
-                <option value="CASH">Tunai (Cash)</option>
-                <option value="GIRO">Giro / Cek</option>
-              </select>
-            </div>
-          </div>
-          <div className="flex justify-end pt-2">
-            <button type="submit" className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Simpan Beban</button>
-          </div>
-        </form>
-      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3"> Pendapatan (Omset)</h3>
-          <p className="text-2xl font-black text-slate-900">{fmtRp(lr.total_paid)}</p>
-          <p className="text-xs text-slate-400">Total Tagihan: {fmtRp(lr.total_revenue)} | Piutang: {fmtRp(lr.total_outstanding)}</p>
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Pendapatan</span>
+          <p className="text-xl font-black font-mono text-slate-900 mt-1">{fmtRp(lr.total_pendapatan)}</p>
+          <span className="text-[10px] text-emerald-600 font-bold mt-2 block">✓ Terverifikasi dari Pembayaran Jamaah</span>
         </div>
         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3"> Beban Operasional</h3>
-          <p className="text-2xl font-black text-rose-600">{fmtRp(lr.total_expenses)}</p>
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Beban Operasional</span>
+          <p className="text-xl font-black font-mono text-rose-600 mt-1">{fmtRp(lr.total_beban)}</p>
+          <span className="text-[10px] text-slate-500 font-bold mt-2 block">Pengeluaran & Biaya Tour</span>
         </div>
-        <div className={`rounded-2xl border p-5 shadow-xs ${lr.gross_profit >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3"> Laba Bersih / Kotor</h3>
-          <p className={`text-2xl font-black ${lr.gross_profit >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>{fmtRp(lr.gross_profit)}</p>
+        <div className="bg-slate-900 text-white rounded-2xl border border-slate-900 p-5 shadow-xs">
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Laba Bersih Usaha</span>
+          <p className={`text-xl font-black font-mono mt-1 ${lr.laba_bersih >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{fmtRp(lr.laba_bersih)}</p>
+          <span className="text-[10px] text-slate-400 font-bold mt-2 block">Net Profit Perusahaan</span>
         </div>
       </div>
 
-      {/* Beban by Group */}
-      {lr.expenses_by_group && lr.expenses_by_group.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Rincian Beban per Kategori COA</h3>
-          <div className="space-y-2">
-            {lr.expenses_by_group.map((g: any, i: number) => (
-              <div key={i} className="flex justify-between items-center text-sm border-b border-slate-100 pb-2">
-                <span className="text-slate-600 font-medium">{g.coa_code} - {g.coa_name}</span>
-                <span className="font-bold text-slate-900">{fmtRp(g.total_expense)}</span>
+      {/* Breakdown Details */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+          <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider border-b pb-3">Rincian Pendapatan</h4>
+          <div className="space-y-3 text-xs">
+            <div className="flex justify-between items-center py-2 border-b border-slate-100">
+              <span className="text-slate-600 font-medium">Pembayaran Tiket & Paket Umroh</span>
+              <span className="font-mono font-bold text-slate-900">{fmtRp(lr.total_pendapatan)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+          <div className="flex justify-between items-center border-b pb-3">
+            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Rincian Beban / Pengeluaran</h4>
+            <span className="text-xs font-mono font-bold text-rose-600">{fmtRp(lr.total_beban)}</span>
+          </div>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {expensesList.map((ex: any) => (
+              <div key={ex.id} className="bg-slate-50 border border-slate-200/60 rounded-xl p-3 flex justify-between items-center text-xs">
+                <div>
+                  <p className="font-bold text-slate-900">{ex.description}</p>
+                  <p className="text-[10px] text-slate-500">{ex.date} | Akun: {ex.coa_name || 'Beban'}</p>
+                </div>
+                <span className="font-mono font-bold text-rose-600">{fmtRp(ex.amount)}</span>
               </div>
             ))}
+            {expensesList.length === 0 && (
+              <p className="text-xs text-slate-400 text-center py-4">Belum ada catatan beban operasional.</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Add Expense Modal */}
+      {showAddExpense && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-6">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+              <h3 className="text-base font-black text-slate-900">Catat Beban Operasional Baru</h3>
+              <button onClick={() => setShowAddExpense(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+            </div>
+            <form onSubmit={addExpense} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Akun Beban (COA)</label>
+                <select
+                  value={coaId}
+                  onChange={e => setCoaId(e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 bg-white focus:ring-2 focus:ring-slate-900 focus:outline-none"
+                  required
+                >
+                  <option value="">-- Pilih Akun Beban --</option>
+                  {coaList.map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.coa_code} - {c.coa_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Tanggal</label>
+                  <input
+                    type="date"
+                    value={expDate}
+                    onChange={e => setExpDate(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Nominal (Rp)</label>
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    placeholder="1500000"
+                    className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-slate-900"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Keterangan Pengeluaran</label>
+                <input
+                  type="text"
+                  value={desc}
+                  onChange={e => setDesc(e.target.value)}
+                  placeholder="Cth: Konsumsi rapat manasik jamaah"
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Metode Bayar</label>
+                  <select
+                    value={method}
+                    onChange={e => setMethod(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white"
+                  >
+                    <option value="TRANSFER">Transfer Bank</option>
+                    <option value="CASH">Kas Tunai</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">No. Referensi (Opsional)</label>
+                  <input
+                    type="text"
+                    value={ref}
+                    onChange={e => setRef(e.target.value)}
+                    placeholder="TRX-9981"
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddExpense(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-5 py-2 rounded-xl transition shadow-xs"
+                >
+                  Simpan Beban
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
-
-      {/* Expenses History Table */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs">
-        <div className="p-4 border-b border-slate-100">
-          <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">Riwayat Pencatatan Beban</h3>
-        </div>
-        <table className="w-full text-xs">
-          <thead className="bg-slate-50 text-slate-500">
-            <tr>
-              <th className="text-left px-4 py-3 font-bold">Tanggal</th>
-              <th className="text-left px-4 py-3 font-bold">Akun COA</th>
-              <th className="text-left px-4 py-3 font-bold">Keterangan</th>
-              <th className="text-right px-4 py-3 font-bold">Jumlah</th>
-              <th className="text-right px-4 py-3 font-bold">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {expensesList.map((exp: any) => (
-              <tr key={exp.id} className="border-t border-slate-100 hover:bg-slate-50/50">
-                <td className="px-4 py-3 font-mono">{exp.expense_date}</td>
-                <td className="px-4 py-3 font-bold text-slate-900">{exp.coa_code} - {exp.coa_name}</td>
-                <td className="px-4 py-3 text-slate-700">{exp.description}</td>
-                <td className="px-4 py-3 text-right font-bold text-rose-600">{fmtRp(exp.amount)}</td>
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => handleDeleteExpense(exp.id)} className="text-rose-600 hover:underline font-semibold">Hapus</button>
-                </td>
-              </tr>
-            ))}
-            {expensesList.length === 0 && (
-              <tr>
-                <td colSpan={5} className="text-center py-8 text-slate-400">Belum ada catatan beban operasional.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }
 
-
-/* ===================== NERACA ===================== */
 function NeracaTab() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
