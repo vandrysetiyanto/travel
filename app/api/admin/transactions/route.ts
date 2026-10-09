@@ -139,10 +139,21 @@ export async function POST(request: Request) {
         newStatus = 'DP';
       }
 
+      const receiptNo = 'KW-' + Math.floor(100000 + Math.random() * 900000);
+      const phase = newPaid >= tx.total_amount ? 'PELUNASAN' : 'CICILAN';
+
+      db.prepare('UPDATE transactions SET paid_amount = ?, remaining_amount = ?, status = ? WHERE id = ?').run(newPaid, newRemaining, newStatus, transaction_id);
+
       db.prepare(`
         INSERT INTO payment_history (transaction_id, receipt_number, amount, payment_type, payment_phase, bank_name, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(transaction_id, receiptNo, payAmount, payment_type || 'TRANSFER', phase, bank_name || '', notes || '');
+
+      // Auto-sync payment to General Ledger (Jurnal Buku Besar) with correct schema
+      db.prepare(`
+        INSERT INTO ledger (entry_date, coa_account_id, entry_type, amount, description)
+        VALUES (?, (SELECT id FROM chart_of_accounts WHERE coa_code = '1-101'), 'DEBIT', ?, ?)
+      `).run(new Date().toISOString().split('T')[0], payAmount, 'Pembayaran Jamaah - ' + receiptNo);
 
       return NextResponse.json({ success: true, message: 'Pembayaran berhasil dicatat', receipt_number: receiptNo });
     }

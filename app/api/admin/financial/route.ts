@@ -52,7 +52,7 @@ export async function GET(request: Request) {
     const expenses = db.prepare(`
       SELECT e.*, coa.coa_code, coa.coa_name, coa.coa_group
       FROM expenses e
-      LEFT JOIN chart_of_accounts coa ON e.coa_id = coa.id
+      LEFT JOIN chart_of_accounts coa ON e.coa_account_id = coa.id
       ${expCondition}
     `).all(...expParams);
     const total_expenses = expenses.reduce((acc: number, curr: any) => acc + (curr.amount || 0), 0);
@@ -191,29 +191,29 @@ export async function POST(request: Request) {
 
     if (action === 'GET_EXPENSES') {
       const expenses = db.prepare(`
-        e.*, coa.coa_code, coa.coa_name
+        SELECT e.*, coa.coa_code, coa.coa_name
         FROM expenses e
-        LEFT JOIN chart_of_accounts coa ON e.coa_id = coa.id
+        LEFT JOIN chart_of_accounts coa ON e.coa_account_id = coa.id
         ORDER BY e.expense_date DESC, e.id DESC
       `).all();
       return NextResponse.json({ success: true, expenses });
     }
 
     if (action === 'ADD_EXPENSE') {
-      const { coa_id, amount, description, expense_date } = body;
-      if (!coa_id || !amount) {
+      const { coa_account_id, amount, description, expense_date } = body;
+      if (!coa_account_id || !amount) {
         return NextResponse.json({ success: false, message: 'Akun dan jumlah beban wajib diisi' }, { status: 400 });
       }
       const res = db.prepare(`
-        INSERT INTO expenses (coa_id, amount, description, expense_date)
+        INSERT INTO expenses (coa_account_id, amount, description, expense_date)
         VALUES (?, ?, ?, ?)
-      `).run(coa_id, amount, description || '', expense_date || new Date().toISOString().split('T')[0]);
+      `).run(coa_account_id, amount, description || '', expense_date || new Date().toISOString().split('T')[0]);
 
-      // Also record in ledger
+      // Also record in ledger with correct schema (coa_account_id, entry_type, amount)
       db.prepare(`
-        INSERT INTO ledger (entry_date, coa_id, debit, credit, description)
-        VALUES (?, ?, 0, ?, ?)
-      `).run(expense_date || new Date().toISOString().split('T')[0], coa_id, amount, description || 'Beban Operasional');
+        INSERT INTO ledger (entry_date, coa_account_id, entry_type, amount, description)
+        VALUES (?, ?, 'CREDIT', ?, ?)
+      `).run(expense_date || new Date().toISOString().split('T')[0], coa_account_id, amount, description || 'Beban Operasional');
 
       return NextResponse.json({ success: true, message: 'Beban operasional berhasil dicatat', expense_id: Number(res.lastInsertRowid) });
     }
@@ -224,11 +224,55 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Catatan beban dihapus' });
     }
 
+    if (action === 'GET_JOURNALS') {
+      const journals = db.prepare(`
+        SELECT j.*, 
+               d.coa_code as debit_code, d.coa_name as debit_name,
+               c.coa_code as credit_code, c.coa_name as credit_name
+        FROM general_journals j
+        LEFT JOIN chart_of_accounts d ON j.debit_coa_id = d.id
+        LEFT JOIN chart_of_accounts c ON j.credit_coa_id = c.id
+        ORDER BY j.journal_date DESC, j.id DESC
+      `).all();
+      return NextResponse.json({ success: true, journals });
+    }
+
+    if (action === 'ADD_JOURNAL') {
+      const { journal_date, reference_no, description, debit_coa_id, credit_coa_id, amount } = body;
+      if (!journal_date || !debit_coa_id || !credit_coa_id || !amount) {
+        return NextResponse.json({ success: false, message: 'Semua field wajib diisi (Tanggal, Akun Debit, Akun Kredit, Jumlah)' }, { status: 400 });
+      }
+
+      const res = db.prepare(`
+        INSERT INTO general_journals (journal_date, reference_no, description, debit_coa_id, credit_coa_id, amount)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(journal_date, reference_no || 'JRN-' + Math.floor(1000 + Math.random() * 9000), description || 'Jurnal Umum', debit_coa_id, credit_coa_id, amount);
+
+      // Also record both debit and credit entries in ledger for strict double-entry accounting
+      db.prepare(`
+        INSERT INTO ledger (entry_date, coa_account_id, entry_type, amount, description)
+        VALUES (?, ?, 'DEBIT', ?, ?)
+      `).run(journal_date, debit_coa_id, amount, description || 'Jurnal Umum (Debit)');
+
+      db.prepare(`
+        INSERT INTO ledger (entry_date, coa_account_id, entry_type, amount, description)
+        VALUES (?, ?, 'CREDIT', ?, ?)
+      `).run(journal_date, credit_coa_id, amount, description || 'Jurnal Umum (Kredit)');
+
+      return NextResponse.json({ success: true, message: 'Jurnal umum berhasil dicatat & disinkronkan ke buku besar', id: Number(res.lastInsertRowid) });
+    }
+
+    if (action === 'DELETE_JOURNAL') {
+      const { id } = body;
+      db.prepare('DELETE FROM general_journals WHERE id = ?').run(id);
+      return NextResponse.json({ success: true, message: 'Jurnal umum dihapus' });
+    }
+
     if (action === 'GET_LEDGER') {
       const ledger = db.prepare(`
-        l.*, coa.coa_code, coa.coa_name
+        SELECT l.*, coa.coa_code, coa.coa_name
         FROM ledger l
-        LEFT JOIN chart_of_accounts coa ON l.coa_id = coa.id
+        LEFT JOIN chart_of_accounts coa ON l.coa_account_id = coa.id
         ORDER BY l.entry_date DESC, l.id DESC
         LIMIT 100
       `).all();

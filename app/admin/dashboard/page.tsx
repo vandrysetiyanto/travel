@@ -38,18 +38,18 @@ function ToastContainer({ toast, onClose }: { toast: { msg: string; type: 'succe
   );
 }
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, CheckSquare,
+import { CheckSquare,
   FileText, Calculator, Wallet,
   LayoutDashboard, Users, Package, Boxes, ShoppingBag, Receipt,
   TrendingUp, Plane, ClipboardList, Building2, ShieldCheck, LogOut,
-  Menu, X, CheckCircle2, Clock, AlertCircle, RefreshCw
+  Menu, X, CheckCircle2, Clock, AlertCircle, RefreshCw, BookOpen, CreditCard, FileSpreadsheet
 } from 'lucide-react';
 
 
 const fmt = (n: number) => new Intl.NumberFormat('id-ID').format(n);
 const fmtRp = (n: number) => 'Rp ' + fmt(n);
 
-type Tab = 'expenses' | 'ledger' | 'stock-ledger' | 'checklist' | 'dashboard' | 'master-coa' | 'jamaah' | 'paket' | 'inventory' | 'transaksi' | 'manifest' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'registrations' | 'staf' | 'settings';
+type Tab = 'checklist' | 'dashboard' | 'master-coa' | 'jamaah' | 'paket' | 'inventory' | 'transaksi' | 'manifest' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'settings';
 type MasterSub = 'jamaah' | 'paket' | 'inventaris';
 
 /* ===================== DASHBOARD TAB ===================== */
@@ -2251,178 +2251,9 @@ function ChecklistTab() {
 
 
 
-// 1. Expenses Management Tab (Beban Operasional Mandiri)
-function ExpensesTab() {
-  const [expensesList, setExpensesList] = useState<any[]>([]);
-  const [coaList, setCoaList] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [amount, setAmount] = useState('');
-  const [coaId, setCoaId] = useState('');
-  const [description, setDescription] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [msg, setMsg] = useState('');
-
-  const loadData = () => {
-    setLoading(true);
-    fetch('/api/admin/financial', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'GET_EXPENSES' })
-    }).then(r => r.json()).then(d => {
-      if (d.success) setExpensesList(d.expenses || []);
-    });
-
-    fetch('/api/admin/financial', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'GET_COA' })
-    }).then(r => r.json()).then(d => {
-      if (d.success) {
-        const bebanCoa = (d.coa || []).filter((item: any) => item.coa_group === 'Beban');
-        setCoaList(bebanCoa);
-        if (bebanCoa.length > 0 && !coaId) setCoaId(String(bebanCoa[0].id));
-      }
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  };
-
-  useEffect(() => { loadData(); }, []);
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMsg('');
-    const res = await fetch('/api/admin/financial', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'ADD_EXPENSE',
-        coa_id: coaId,
-        amount: Number(amount),
-        description,
-        expense_date: date
-      })
-    });
-    const json = await res.json();
-    if (json.success) {
-      setMsg(json.message);
-      setShowModal(false);
-      setAmount('');
-      setDescription('');
-      loadData();
-    } else {
-      setMsg('Gagal: ' + json.message);
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    if (!confirm('Hapus catatan beban ini?')) return;
-    await fetch('/api/admin/financial', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'DELETE_EXPENSE', id })
-    });
-    loadData();
-  };
-
-  const totalExpense = expensesList.reduce((acc, curr) => acc + (curr.amount || 0), 0);
-
-  return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">Beban Operasional (Expenses)</h2>
-          <p className="text-sm text-slate-500 mt-1">Pencatatan pengeluaran harian perusahaan yang terhubung otomatis ke Laporan Laba Rugi dan Kas.</p>
-        </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-xs w-fit"
-        >
-          + Catat Beban Baru
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Total Beban Operasional</h3>
-          <p className="text-2xl font-black text-rose-600">{fmtRp(totalExpense)}</p>
-        </div>
-      </div>
-
-      {msg && <div className="bg-emerald-50 text-emerald-800 p-4 rounded-xl text-xs font-semibold">{msg}</div>}
-
-      <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs">
-        <table className="w-full text-xs">
-          <thead className="bg-slate-50 text-slate-500">
-            <tr>
-              <th className="text-left px-4 py-3 font-bold">Tanggal</th>
-              <th className="text-left px-4 py-3 font-bold">Akun COA</th>
-              <th className="text-left px-4 py-3 font-bold">Keterangan</th>
-              <th className="text-right px-4 py-3 font-bold">Jumlah (Rp)</th>
-              <th className="text-right px-4 py-3 font-bold">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {expensesList.map((exp: any) => (
-              <tr key={exp.id} className="border-t border-slate-100 hover:bg-slate-50/50">
-                <td className="px-4 py-3 font-mono">{exp.expense_date}</td>
-                <td className="px-4 py-3 font-bold text-slate-900">{exp.coa_code} - {exp.coa_name}</td>
-                <td className="px-4 py-3 text-slate-700">{exp.description}</td>
-                <td className="px-4 py-3 text-right font-bold text-rose-600">{fmtRp(exp.amount)}</td>
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => handleDelete(exp.id)} className="text-rose-600 hover:underline font-semibold">Hapus</button>
-                </td>
-              </tr>
-            ))}
-            {expensesList.length === 0 && (
-              <tr>
-                <td colSpan={5} className="text-center py-12 text-slate-400">Belum ada catatan beban operasional.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {showModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
-            <h3 className="text-base font-bold text-slate-900">Form Pencatatan Beban Operasional</h3>
-            <form onSubmit={handleSave} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Tanggal</label>
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} required className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Akun Beban (COA)</label>
-                <select value={coaId} onChange={e => setCoaId(e.target.value)} required className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl">
-                  {coaList.map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.coa_code} - {c.coa_name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Jumlah (Rp)</label>
-                <input type="number" inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Contoh: 1500000" required className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Keterangan / Keperluan</label>
-                <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Contoh: Pembayaran hotel transit" rows={3} className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl"></textarea>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold">Batal</button>
-                <button type="submit" className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold">Simpan Beban</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// 2. General Ledger Tab (Jurnal Buku Besar)
+/* ===================== JURNAL BUKU BESAR ===================== */
 function LedgerTab() {
-  const [ledgerList, setLedgerList] = useState<any[]>([]);
+  const [ledger, setLedger] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -2432,103 +2263,98 @@ function LedgerTab() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'GET_LEDGER' })
     }).then(r => r.json()).then(d => {
-      if (d.success) setLedgerList(d.ledger || []);
+      if (d.success) setLedger(d.ledger || []);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
-        <h2 className="text-xl font-bold tracking-tight text-slate-900">Jurnal Buku Besar (General Ledger)</h2>
-        <p className="text-sm text-slate-500 mt-1">Audit trail seluruh transaksi keuangan, pemasukan, dan pengeluaran secara kronologis.</p>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs">
-        <table className="w-full text-xs">
-          <thead className="bg-slate-50 text-slate-500">
-            <tr>
-              <th className="text-left px-4 py-3 font-bold">Tanggal</th>
-              <th className="text-left px-4 py-3 font-bold">Akun COA</th>
-              <th className="text-left px-4 py-3 font-bold">Keterangan</th>
-              <th className="text-right px-4 py-3 font-bold">Debit (Rp)</th>
-              <th className="text-right px-4 py-3 font-bold">Kredit (Rp)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ledgerList.map((l: any) => (
-              <tr key={l.id} className="border-t border-slate-100 hover:bg-slate-50/50">
-                <td className="px-4 py-3 font-mono">{l.entry_date}</td>
-                <td className="px-4 py-3 font-bold text-slate-900">{l.coa_code} - {l.coa_name}</td>
-                <td className="px-4 py-3 text-slate-700">{l.description}</td>
-                <td className="px-4 py-3 text-right font-bold text-emerald-600">{l.debit > 0 ? fmtRp(l.debit) : '-'}</td>
-                <td className="px-4 py-3 text-right font-bold text-slate-900">{l.credit > 0 ? fmtRp(l.credit) : '-'}</td>
+    <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+      <h3 className="text-base font-black text-slate-900">Jurnal Buku Besar (General Ledger)</h3>
+      {loading ? <p className="text-center text-slate-400 py-8">Memuat...</p> : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
+                <th className="p-3">Tanggal</th>
+                <th className="p-3">Kode Akun</th>
+                <th className="p-3">Nama Akun</th>
+                <th className="p-3">Keterangan</th>
+                <th className="p-3 text-right">Debit (Rp)</th>
+                <th className="p-3 text-right">Kredit (Rp)</th>
               </tr>
-            ))}
-            {ledgerList.length === 0 && (
-              <tr>
-                <td colSpan={5} className="text-center py-12 text-slate-400">Belum ada entri buku besar.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {ledger.map((l:any)=>(
+                <tr key={l.id} className="hover:bg-slate-50 transition">
+                  <td className="p-3 font-mono text-slate-500">{l.entry_date}</td>
+                  <td className="p-3 font-mono font-bold text-slate-700">{l.coa_code}</td>
+                  <td className="p-3 font-bold text-slate-900">{l.coa_name}</td>
+                  <td className="p-3 text-slate-600">{l.description}</td>
+                  <td className="p-3 text-right font-mono font-bold text-emerald-600">
+                    {l.entry_type === 'DEBIT' ? fmtRp(l.amount) : '-'}
+                  </td>
+                  <td className="p-3 text-right font-mono font-bold text-rose-600">
+                    {l.entry_type === 'CREDIT' ? fmtRp(l.amount) : '-'}
+                  </td>
+                </tr>
+              ))}
+              {ledger.length === 0 && (
+                <tr><td colSpan={6} className="text-center py-8 text-slate-400">Belum ada entri buku besar.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
 
-// 3. Stock Ledger Tab (Mutasi Stok Gudang)
+/* ===================== MUTASI STOK GUDANG ===================== */
 function StockLedgerTab() {
-  const [movements, setMovements] = useState<any[]>([]);
+  const [handovers, setHandovers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    fetch('/api/admin/inventory/ledger')
-      .then(r => r.json())
-      .then(d => {
-        if (d.success) setMovements(d.movements || []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    fetch('/api/admin/inventory/ledger').then(r => r.json()).then(d => {
+      if (d.success) setHandovers(d.handovers || d.data || []);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
-        <h2 className="text-xl font-bold tracking-tight text-slate-900">Mutasi Stok Gudang (Stock Ledger)</h2>
-        <p className="text-sm text-slate-500 mt-1">Riwayat penyerahan logistik dan perlengkapan kepada jamaah secara real-time.</p>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs">
-        <table className="w-full text-xs">
-          <thead className="bg-slate-50 text-slate-500">
-            <tr>
-              <th className="text-left px-4 py-3 font-bold">Waktu Penyerahan</th>
-              <th className="text-left px-4 py-3 font-bold">Nama Barang</th>
-              <th className="text-center px-4 py-3 font-bold">Jumlah Keluar</th>
-              <th className="text-left px-4 py-3 font-bold">Kode Booking</th>
-              <th className="text-left px-4 py-3 font-bold">Nama Jamaah</th>
-            </tr>
-          </thead>
-          <tbody>
-            {movements.map((m: any) => (
-              <tr key={m.id} className="border-t border-slate-100 hover:bg-slate-50/50">
-                <td className="px-4 py-3 font-mono">{m.handed_at}</td>
-                <td className="px-4 py-3 font-bold text-slate-900">{m.item_name}</td>
-                <td className="px-4 py-3 text-center font-bold text-rose-600">-{m.qty} {m.unit}</td>
-                <td className="px-4 py-3 font-mono font-bold text-blue-600">{m.booking_code || '-'}</td>
-                <td className="px-4 py-3 font-semibold text-slate-800">{m.jamaah_name || '-'}</td>
+    <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+      <h3 className="text-base font-black text-slate-900">Mutasi Stok Gudang & Penyerahan Perlengkapan</h3>
+      {loading ? <p className="text-center text-slate-400 py-8">Memuat...</p> : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
+                <th className="p-3">Tanggal</th>
+                <th className="p-3">Nama Jamaah</th>
+                <th className="p-3">Nama Barang</th>
+                <th className="p-3 text-center">Jumlah Keluar</th>
+                <th className="p-3">Catatan</th>
               </tr>
-            ))}
-            {movements.length === 0 && (
-              <tr>
-                <td colSpan={5} className="text-center py-12 text-slate-400">Belum ada mutasi stok keluar gudang.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {handovers.map((h:any)=>(
+                <tr key={h.id} className="hover:bg-slate-50 transition">
+                  <td className="p-3 font-mono text-slate-500">{h.handover_date || h.created_at}</td>
+                  <td className="p-3 font-bold text-slate-900">{h.full_name || h.jamaah_name}</td>
+                  <td className="p-3 font-bold text-slate-700">{h.item_name || h.name}</td>
+                  <td className="p-3 text-center font-mono font-bold text-rose-600">-{h.quantity || h.qty}</td>
+                  <td className="p-3 text-slate-600">{h.notes || '-'}</td>
+                </tr>
+              ))}
+              {handovers.length === 0 && (
+                <tr><td colSpan={5} className="text-center py-8 text-slate-400">Belum ada mutasi stok gudang.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -2589,7 +2415,7 @@ export default function AdminDashboard() {
 
   const isOwner = user?.role === 'OWNER';
 
-          const menuGroups: { groupName: string; items: { id: Tab; icon: React.ReactNode; label: string }[] }[] = [
+      const menuGroups: { groupName: string; items: { id: Tab; icon: React.ReactNode; label: string }[] }[] = [
     {
       groupName: 'Master Data',
       items: [
@@ -2604,7 +2430,13 @@ export default function AdminDashboard() {
       items: [
         { id: 'transaksi', icon: <ShoppingBag className="w-4 h-4" />, label: 'Transaksi & Booking' },
         { id: 'pembayaran', icon: <Receipt className="w-4 h-4" />, label: 'Verifikasi Pembayaran' },
-        { id: 'expenses' as Tab, icon: <Receipt className="w-4 h-4" />, label: 'Beban Operasional' },
+        { id: 'general-journal' as Tab, icon: <BookOpen className="w-4 h-4" />, label: 'Jurnal Umum (Memorial)' },
+        { id: 'expenses' as Tab, icon: <CreditCard className="w-4 h-4" />, label: 'Beban Operasional' },
+      ],
+    },
+    {
+      groupName: 'Operasional & Jamaah',
+      items: [
         { id: 'manifest', icon: <Plane className="w-4 h-4" />, label: 'Manifest Keberangkatan' },
         { id: 'registrations', icon: <ClipboardList className="w-4 h-4" />, label: 'Registrasi Online' },
         { id: 'checklist' as Tab, icon: <CheckSquare className="w-4 h-4" />, label: 'Checklist Kelengkapan' },
@@ -2617,8 +2449,8 @@ export default function AdminDashboard() {
         { id: 'laba-rugi', icon: <FileText className="w-4 h-4" />, label: 'Laporan Laba Rugi' },
         { id: 'neraca', icon: <Calculator className="w-4 h-4" />, label: 'Laporan Neraca' },
         { id: 'arus-kas', icon: <Wallet className="w-4 h-4" />, label: 'Laporan Arus Kas' },
-        { id: 'ledger' as Tab, icon: <BookOpen className="w-4 h-4" />, label: 'Jurnal Buku Besar' },
-        { id: 'stock-ledger' as Tab, icon: <ClipboardList className="w-4 h-4" />, label: 'Laporan Stok Gudang' },
+        { id: 'ledger' as Tab, icon: <FileSpreadsheet className="w-4 h-4" />, label: 'Jurnal Buku Besar' },
+        { id: 'stock-ledger' as Tab, icon: <Boxes className="w-4 h-4" />, label: 'Mutasi Stok Gudang' },
       ],
     },
     ...(isOwner
@@ -2804,10 +2636,6 @@ export default function AdminDashboard() {
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           {activeTab === 'dashboard' && <DashboardTab isOwner={isOwner} />}
           {activeTab === 'jamaah' && <MasterJamaah />}
-          {activeTab === 'expenses' && <ExpensesTab />}
-          {activeTab === 'ledger' && <LedgerTab />}
-          {activeTab === 'stock-ledger' && <StockLedgerTab />}
-
         {activeTab === 'checklist' && <ChecklistTab />}
           {activeTab === 'paket' && <MasterPaket />}
           {activeTab === 'inventory' && <MasterInventaris />}
@@ -2822,6 +2650,8 @@ export default function AdminDashboard() {
           {activeTab === 'laba-rugi' && <LabaRugiTab isOwner={isOwner} />}
           {activeTab === 'neraca' && <NeracaTab />}
           {activeTab === 'arus-kas' && <ArusKasTab />}
+            {activeTab === 'ledger' && <LedgerTab />}
+            {activeTab === 'stock-ledger' && <StockLedgerTab />}
         </div>
       </main>
       <ToastContainer toast={toast} onClose={() => setToast(null)} />
@@ -3043,10 +2873,12 @@ function LabaRugiTab({ isOwner }: { isOwner: boolean }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'ADD_EXPENSE',
-        coa_id: coaId,
+        coa_account_id: coaId,
         expense_date: expDate,
         amount: Number(amount),
-        description: desc
+        description: desc,
+        payment_method: method,
+        reference: ref
       })
     });
     const json = await res.json();
