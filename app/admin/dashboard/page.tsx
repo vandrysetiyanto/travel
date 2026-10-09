@@ -1702,7 +1702,7 @@ function PembayaranTab() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs font-bold text-slate-900">{pay.receipt_number}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${pay.status === 'VERIFIED' ? 'bg-emerald-50 text-emerald-700' : pay.status === 'REJECTED' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${(pay.status === 'VERIFIED' || pay.status === 'APPROVED') ? 'bg-emerald-50 text-emerald-700' : pay.status === 'REJECTED' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
                         {pay.status}
                       </span>
                     </div>
