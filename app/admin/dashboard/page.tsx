@@ -229,7 +229,6 @@ function MasterJamaah() {
   const openAdd = () => { setForm({}); setMode('open'); };
   const openEdit = (j: any) => { setForm(j); setMode('open'); };
 
-  // Merge helper: hasil scan cuma isi field yang masih kosong, ketikan manual tidak ketimpa
   const mergeKeep = (p: any, patch: Record<string, string | undefined>) => {
     const next = { ...p };
     for (const [k, v] of Object.entries(patch)) {
@@ -240,176 +239,189 @@ function MasterJamaah() {
 
   const handleOCR = async (docType: 'KTP'|'KK'|'PASPOR', fileRef: React.RefObject<HTMLInputElement>) => {
     const file = fileRef.current?.files?.[0];
-    if (!file) return alert('Pilih file gambar terlebih dahulu');
+    if (!file) return (window as any).__showAdminToast ? (window as any).__showAdminToast('Pilih file gambar terlebih dahulu', 'error') : alert('Pilih file gambar terlebih dahulu');
     setOcrLoading(docType);
     const fd = new FormData(); fd.append('image', file); fd.append('docType', docType);
     try {
       const res = await fetch('/api/ocr', { method: 'POST', body: fd });
       const d = await res.json();
       if (d.success && d.data) {
-        if (docType === 'PASPOR') {
-          setForm((p: any) => mergeKeep(p, {
-            passport_number: d.data.passportNumber, full_name: d.data.fullName,
-            birth_date: d.data.birthDate, gender: d.data.gender, passport_expiry: d.data.passportExpiry,
-            passport_status: d.data.passportNumber ? 'SUDAH' : undefined,
-          }));
-        } else {
-          setForm((p: any) => mergeKeep(p, {
-            nik: d.data.nik, no_kk: d.data.noKK, full_name: d.data.fullName,
-            birth_place: d.data.birthPlace, birth_date: d.data.birthDate,
-            gender: d.data.gender, address: d.data.address,
-          }));
-        }
-      } else { alert('OCR gagal: ' + (d.message || '')); }
-    } catch { alert('Error OCR'); }
+        setForm((prev: any) => mergeKeep(prev, d.data));
+        (window as any).__showAdminToast ? (window as any).__showAdminToast(`Berhasil scan ${docType}!`, 'success') : alert(`Berhasil scan ${docType}!`);
+      } else {
+        alert(d.message || 'OCR gagal mengenali teks');
+      }
+    } catch (e: any) {
+      alert('Gagal OCR: ' + e.message);
+    }
     setOcrLoading('');
   };
 
   const save = async () => {
     if (!form.nik || !form.full_name) return (window as any).__showAdminToast ? (window as any).__showAdminToast('NIK dan Nama wajib diisi', 'error') : alert('NIK dan Nama wajib diisi');
-    const res = await fetch('/api/admin/jamaah', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
-    const d = await res.json();
-    (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, d.success ? 'success' : 'error') : alert(d.message); if (d.success) { setMode('idle'); setForm({}); load(); }
+    const res = await fetch('/api/admin/jamaah', { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ action: form.id ? 'UPDATE_JAMAAH' : 'CREATE_JAMAAH', ...form }) 
+    });
+    const d = await res.json(); 
+    (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, d.success ? 'success' : 'error') : alert(d.message); 
+    if (d.success) { setMode('idle'); setForm({}); load(); }
   };
 
-
-
+  const remove = async (id: number) => {
+    if (!confirm('Hapus data jamaah ini?')) return;
+    const res = await fetch('/api/admin/jamaah', { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ action: 'DELETE_JAMAAH', id }) 
+    });
+    const d = await res.json(); 
+    if (d.success) load(); 
+    else alert(d.message);
+  };
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-xl shadow p-4">
-        <div className="flex flex-wrap gap-3 items-end justify-between">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Cari Jamaah</label>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="NIK / Nama / HP..." className="w-full border rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <button onClick={openAdd} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm">+ Tambah Jamaah</button>
+    <div className="space-y-6">
+      {/* Header & Search Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div>
+          <h3 className="text-base font-black text-slate-900">Database Data Jamaah</h3>
+          <p className="text-xs text-slate-500">Pusat data informasi pribadi, paspor, dan dokumen jemaah.</p>
+        </div>
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <input 
+            value={search} 
+            onChange={e => setSearch(e.target.value)} 
+            className="w-full sm:w-64 border rounded-xl px-3 py-2 text-xs" 
+            placeholder="Cari NIK, Nama, atau No HP..." 
+          />
+          <button onClick={openAdd} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition shrink-0">+ Tambah Jamaah</button>
         </div>
       </div>
 
+      {/* Modal Form Centered Pop-up */}
       {mode === 'open' && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4" onClick={()=>setMode('idle')}>
-          <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:slide-in-from-bottom-0" onClick={e=>e.stopPropagation()}>
-            {/* Sticky Modal Header */}
-            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
-                <h3 className="font-bold text-slate-900 text-base sm:text-lg">{form.id ? 'Edit Data Jamaah' : 'Tambah Jamaah Baru'}</h3>
-                <p className="text-xs text-slate-500">Lengkapi data pribadi, paspor, dan visa jemaah.</p>
+                <h3 className="text-base font-black text-slate-900">{form.id ? 'Edit Data Jamaah' : 'Tambah Jamaah Baru'}</h3>
+                <p className="text-xs text-slate-500">Lengkapi data pribadi dan dokumen pendukung.</p>
               </div>
-              <button onClick={()=>setMode('idle')} className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 text-lg"></button>
+              <button onClick={() => setMode('idle')} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
             </div>
 
-            {/* Scrollable Content Body */}
-            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
-              <div className="border rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2"><span className="text-xl"></span><p className="font-medium text-sm">Scan KTP</p></div>
+            {/* OCR Smart Scan Section */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200/60">
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-slate-700">Scan KTP (AI OCR)</p>
                 <div className="flex gap-2">
-                  <input ref={ktpFileRef} type="file" accept="image/*" className="text-xs flex-1 min-w-0" />
-                  <button onClick={()=>handleOCR('KTP', ktpFileRef)} disabled={!!ocrLoading} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs disabled:opacity-50 shrink-0">{ocrLoading==='KTP'?'...':'Scan'}</button>
+                  <input type="file" accept="image/*" ref={ktpFileRef} className="hidden" onChange={() => handleOCR('KTP', ktpFileRef)} />
+                  <button onClick={() => ktpFileRef.current?.click()} disabled={ocrLoading === 'KTP'} className="w-full bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold py-1.5 px-3 rounded-lg text-xs transition">
+                    {ocrLoading === 'KTP' ? 'Memproses...' : 'Upload KTP'}
+                  </button>
                 </div>
               </div>
-              <div className="border rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2"><span className="text-xl">👨‍👩‍👧</span><p className="font-medium text-sm">Scan KK</p></div>
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-slate-700">Scan Kartu Keluarga (KK)</p>
                 <div className="flex gap-2">
-                  <input ref={kkFileRef} type="file" accept="image/*" className="text-xs flex-1 min-w-0" />
-                  <button onClick={()=>handleOCR('KK', kkFileRef)} disabled={!!ocrLoading} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs disabled:opacity-50 shrink-0">{ocrLoading==='KK'?'...':'Scan'}</button>
+                  <input type="file" accept="image/*" ref={kkFileRef} className="hidden" onChange={() => handleOCR('KK', kkFileRef)} />
+                  <button onClick={() => kkFileRef.current?.click()} disabled={ocrLoading === 'KK'} className="w-full bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold py-1.5 px-3 rounded-lg text-xs transition">
+                    {ocrLoading === 'KK' ? 'Memproses...' : 'Upload KK'}
+                  </button>
                 </div>
               </div>
-              <div className="border rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2"><span className="text-xl"></span><p className="font-medium text-sm">Scan Paspor</p></div>
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-slate-700">Scan Paspor</p>
                 <div className="flex gap-2">
-                  <input ref={paspFileRef} type="file" accept="image/*" className="text-xs flex-1 min-w-0" />
-                  <button onClick={()=>handleOCR('PASPOR', paspFileRef)} disabled={!!ocrLoading} className="bg-purple-600 text-white px-3 py-1.5 rounded-lg text-xs disabled:opacity-50 shrink-0">{ocrLoading==='PASPOR'?'...':'Scan'}</button>
+                  <input type="file" accept="image/*" ref={paspFileRef} className="hidden" onChange={() => handleOCR('PASPOR', paspFileRef)} />
+                  <button onClick={() => paspFileRef.current?.click()} disabled={ocrLoading === 'PASPOR'} className="w-full bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold py-1.5 px-3 rounded-lg text-xs transition">
+                    {ocrLoading === 'PASPOR' ? 'Memproses...' : 'Upload Paspor'}
+                  </button>
                 </div>
               </div>
             </div>
-            <p className="text-xs text-gray-500 mb-4">Hasil scan hanya mengisi kolom yang masih kosong — kolom yang sudah diisi manual tidak akan tertimpa. Bisa scan lebih dari satu dokumen sebelum menyimpan.</p>
 
-          <div className="space-y-5">
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5"> Identitas Pribadi</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="block text-xs font-medium text-gray-600">NIK (16 Digit) <span className="text-red-500">*</span></label>
-                    <span className={"text-[10px] font-mono font-bold " + ((form.nik||'').length === 16 ? "text-emerald-600" : "text-amber-600")}>{(form.nik||'').length}/16</span>
-                  </div>
-                  <input value={form.nik||''} onChange={e=>setForm({...form,nik:e.target.value.replace(/\D/g,'')})} inputMode="numeric" pattern="[0-9]*" maxLength={16} placeholder="16 digit NIK" className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">No. KK</label>
-                  <input value={form.no_kk||''} onChange={e=>setForm({...form,no_kk:e.target.value.replace(/\D/g,'')})} inputMode="numeric" pattern="[0-9]*" maxLength={16} placeholder="16 digit No. KK" className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
-                </div>
-                <FInput label="Nama Lengkap *" field="full_name" form={form} setForm={setForm} />
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Jenis Kelamin</label>
-                  <select value={form.gender||'L'} onChange={e=>setForm({...form,gender:e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm bg-white"><option value="L">Laki-laki</option><option value="P">Perempuan</option></select>
-                </div>
-                <FInput label="Tempat Lahir" field="birth_place" form={form} setForm={setForm} />
-                <FInput label="Tgl Lahir" field="birth_date" type="date" form={form} setForm={setForm} />
-                <div><label className="block text-xs font-medium text-gray-600 mb-1">No. WhatsApp <span className="text-red-500">*</span></label>
-                <input type="tel" inputMode="tel" value={form.phone||''} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="08xxxxxxxxxx" className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" /></div>
-                <div><label className="block text-xs font-medium text-gray-600 mb-1">Email <span className="text-red-500">*</span></label>
-                <input type="email" value={form.email||''} onChange={e=>setForm({...form,email:e.target.value})} placeholder="email@domain.com" className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                <div className="md:col-span-3"><FInput label="Alamat Sesuai KTP" field="address" form={form} setForm={setForm} /></div>
+            {/* Form Fields Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <FInput label="NIK KTP *" field="nik" form={form} setForm={setForm} placeholder="3201xxxxxxxxxxxx"/>
+              <FInput label="Nama Lengkap *" field="full_name" form={form} setForm={setForm} placeholder="Sesuai KTP"/>
+              <FInput label="Nomor WhatsApp / HP *" field="phone" form={form} setForm={setForm} placeholder="0812xxxxxxxx"/>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Jenis Kelamin</label>
+                <select value={form.gender || 'L'} onChange={e => setForm({...form, gender: e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
+                  <option value="L">Laki-laki</option>
+                  <option value="P">Perempuan</option>
+                </select>
               </div>
-            </div>
-
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5"> Dokumen Paspor</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <FInput label="No. Paspor" field="passport_number" form={form} setForm={setForm} />
-                <FInput label="Masa Berlaku Paspor" field="passport_expiry" type="date" form={form} setForm={setForm} />
-                <div><label className="block text-xs font-medium text-gray-600 mb-1">Status Fisik Paspor</label>
-                <select value={form.passport_status||'BELUM'} onChange={e=>setForm({...form,passport_status:e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm bg-white"><option value="BELUM">Belum Diterima</option><option value="SUDAH">Sudah Diterima</option></select></div>
+              <FInput label="Tempat Lahir" field="birth_place" form={form} setForm={setForm} placeholder="Jakarta"/>
+              <FInput label="Tanggal Lahir" field="birth_date" type="date" form={form} setForm={setForm}/>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Alamat Sesuai KTP</label>
+                <input value={form.address || ''} onChange={e => setForm({...form, address: e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" placeholder="Jl. Raya No. 123, RT/RW..."/>
               </div>
-            </div>
-
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5"> Dokumen Pendukung & Visa</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div><label className="block text-xs font-medium text-gray-600 mb-1">Buku Nikah / Akta Lahir</label>
-                <select value={form.marriage_doc_status||'BELUM'} onChange={e=>setForm({...form,marriage_doc_status:e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm bg-white"><option value="BELUM">Belum Lengkap</option><option value="SUDAH">Lengkap</option></select></div>
-                <div><label className="block text-xs font-medium text-gray-600 mb-1">Status Visa</label>
-                <select value={form.visa_status||'BELUM'} onChange={e=>setForm({...form,visa_status:e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm bg-white"><option value="BELUM">Belum Diajukan</option><option value="PROSES">Dalam Proses VFS</option><option value="ISSUED">Issued (Terbit)</option></select></div>
+              <FInput label="Nomor Paspor" field="passport_number" form={form} setForm={setForm} placeholder="A1234567"/>
+              <FInput label="Tanggal Terbit Paspor" field="passport_issue_date" type="date" form={form} setForm={setForm}/>
+              <FInput label="Tanggal Expired Paspor" field="passport_expiry_date" type="date" form={form} setForm={setForm}/>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Status Visa</label>
+                <select value={form.visa_status || 'PENDING'} onChange={e => setForm({...form, visa_status: e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
+                  <option value="PENDING">Pending</option>
+                  <option value="PROCESSING">Processing</option>
+                  <option value="APPROVED">Approved</option>
+                </select>
               </div>
-            </div>
-          </div>
+              <FInput label="Kontak Darurat (Nama & HP)" field="emergency_contact" form={form} setForm={setForm} placeholder="Budi (0812...)"/>
+              <FInput label="Riwayat Penyakit / Alergi" field="medical_notes" form={form} setForm={setForm} placeholder="Asam lambung / Hipertensi"/>
             </div>
 
-            {/* Sticky Bottom Action Bar */}
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3 shrink-0">
-              <button onClick={()=>setMode('idle')} className="w-1/2 sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 transition">Batal</button>
-              <button onClick={save} className="w-1/2 sm:w-auto px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition shadow-sm">Simpan Data</button>
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <button onClick={() => setMode('idle')} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
+              <button onClick={save} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Simpan Jamaah</button>
             </div>
           </div>
         </div>
       )}
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="bg-gray-50 text-left">
-            <th className="p-3">NIK</th><th className="p-3">Nama</th><th className="p-3">JK</th><th className="p-3">HP</th>
-            <th className="p-3">Paspor</th><th className="p-3">Nikah</th><th className="p-3">Visa</th><th className="p-3">Aksi</th>
-          </tr></thead>
-          <tbody>
-            {list.map((j:any) => (
-              <tr key={j.id} className="border-b hover:bg-gray-50">
-                <td className="p-3 font-mono text-xs">{j.nik}</td><td className="p-3 font-medium">{j.full_name}</td>
-                <td className="p-3">{j.gender}</td><td className="p-3">{j.phone}</td>
-                <td className="p-3"><DocBadge s={j.passport_status}/></td><td className="p-3"><DocBadge s={j.marriage_doc_status}/></td>
+
+      {/* Jamaah Table View */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
+              <th className="p-3">NIK</th>
+              <th className="p-3">Nama Lengkap</th>
+              <th className="p-3">L/P</th>
+              <th className="p-3">No. HP</th>
+              <th className="p-3">Paspor</th>
+              <th className="p-3">Visa</th>
+              <th className="p-3 text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {list.map((j: any) => (
+              <tr key={j.id} className="hover:bg-slate-50 transition">
+                <td className="p-3 font-mono text-slate-500 font-bold">{j.nik}</td>
+                <td className="p-3 font-bold text-slate-900">{j.full_name}</td>
+                <td className="p-3 text-slate-600">{j.gender}</td>
+                <td className="p-3 font-mono text-slate-600">{j.phone}</td>
+                <td className="p-3 font-mono text-slate-600">{j.passport_number || '-'}</td>
                 <td className="p-3"><DocBadge s={j.visa_status}/></td>
-                <td className="p-3"><button onClick={()=>openEdit(j)} className="text-blue-600 hover:underline text-xs">Edit</button></td>
-              </tr>))}
-            {list.length===0 && <tr><td colSpan={8} className="p-6 text-center text-gray-400">Belum ada data jamaah</td></tr>}
+                <td className="p-3 text-right space-x-2">
+                  <button onClick={() => openEdit(j)} className="text-indigo-600 hover:underline font-bold">Edit</button>
+                  <button onClick={() => remove(j.id)} className="text-rose-600 hover:underline font-bold">Hapus</button>
+                </td>
+              </tr>
+            ))}
+            {list.length === 0 && (
+              <tr><td colSpan={7} className="text-center py-8 text-slate-400">Belum ada data jemaah terdaftar.</td></tr>
+            )}
           </tbody>
-        </table></div>
+        </table>
       </div>
     </div>
   );
 }
-
 
 /* --- Master Paket --- */
 /* --- Master Paket --- */
