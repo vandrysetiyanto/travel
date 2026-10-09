@@ -936,104 +936,146 @@ function TransaksiTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-3 items-center">
+      <div className="flex flex-wrap gap-3 items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
         <div className="flex gap-1">
-          {['ALL','PENDING','DP','PAID','CANCELLED'].map(s=>(<button key={s} onClick={()=>setFilter(s)} className={'px-3 py-1 rounded-full text-xs font-medium transition '+(filter===s?'bg-emerald-600 text-white':'bg-white text-gray-600 hover:bg-gray-100')}>{s==='ALL'?'Semua':s}</button>))}
+          {['ALL','PENDING','DP','PAID','CANCELLED'].map(s=>(<button key={s} onClick={()=>setFilter(s)} className={'px-3 py-1 rounded-full text-xs font-bold transition '+(filter===s?'bg-slate-900 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200')}>{s==='ALL'?'Semua':s}</button>))}
         </div>
-        <button onClick={()=>{setShowBooking(true);setBookForm({});setBookItems([]);setJamaahList([]);}} className="ml-auto bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm">+ Booking Baru</button>
+        <button onClick={()=>{setShowBooking(true);setBookForm({});setBookItems([]);setJamaahList([]);}} className="ml-auto bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition">+ Booking Baru</button>
       </div>
+
       {showBooking && (
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="font-bold text-gray-800 mb-4">Booking Pendaftaran Baru</h3>
-          <div className="mb-4">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Cari Jamaah (NIK/Nama)</label>
-            <div className="flex gap-2"><input value={jamaahSearch} onChange={e=>setJamaahSearch(e.target.value)} className="flex-1 border rounded-lg px-3 py-2 text-sm" placeholder="Ketik NIK atau Nama..."/>
-            <button onClick={searchJamaah} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">Cari</button></div>
-            {jamaahList.length>0 && (
-              <div className="mt-2 border rounded-lg max-h-40 overflow-y-auto">
-                {jamaahList.map((j:any)=>(<button key={j.id} onClick={()=>{setBookForm({...bookForm,jamaah_id:j.id});setJamaahList([]);setJamaahSearch(j.full_name+' ('+j.nik+')');}} className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b">{j.full_name} - {j.nik} - {j.phone}</button>))}
-              </div>
-            )}
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div><label className="block text-xs font-medium text-gray-600 mb-1">Batch Keberangkatan</label>
-            <select value={bookForm.batch_id||''} onChange={e=>setBookForm({...bookForm,batch_id:e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
-              <option value="">-- Pilih Batch --</option>
-              {batches.map((b:any)=>(<option key={b.id} value={b.id}>{b.batch_name} - {b.package_name} ({fmtRp(b.price)}) — Kuota: {b.filled_quota||0}/{b.quota||45}</option>))}
-            </select></div>
-            <div><label className="block text-xs font-medium text-gray-600 mb-1">Pembayaran Awal (DP)</label><input type="number" inputMode="numeric" pattern="[0-9]*" value={bookForm.initial_payment||''} onChange={e=>setBookForm({...bookForm,initial_payment:e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" placeholder="0"/></div>
-            <div><label className="block text-xs font-medium text-gray-600 mb-1">Metode Bayar</label><select value={bookForm.payment_type||'CASH'} onChange={e=>setBookForm({...bookForm,payment_type:e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm"><option>CASH</option><option>TRANSFER</option></select></div>
-          </div>
-
-          {/* Live Price & Remaining Balance Calculator */}
-          {(() => {
-            const selectedBatch = batches.find((b: any) => String(b.id) === String(bookForm.batch_id));
-            const totalPrice = selectedBatch ? selectedBatch.price : 0;
-            const payAmount = Number(bookForm.initial_payment) || 0;
-            const remaining = Math.max(0, totalPrice - payAmount);
-            if (!selectedBatch) return null;
-            return (
-              <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs text-slate-500">Harga Paket ({selectedBatch.package_name})</p>
-                  <p className="text-base font-bold text-slate-800">{fmtRp(totalPrice)}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs text-slate-500">Dibayar Sekarang</p>
-                  <p className="text-base font-bold text-emerald-600">{fmtRp(payAmount)}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs text-slate-500">Sisa Tagihan (Piutang)</p>
-                  <p className={"text-base font-extrabold " + (remaining === 0 ? "text-emerald-700" : "text-amber-600")}>
-                    {fmtRp(remaining)} {remaining === 0 ? " LUNAS" : ""}
-                  </p>
-                </div>
-              </div>
-            );
-          })()}
-
-          <div className="mt-4">
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-xs font-medium text-gray-600">Perlengkapan (opsional)</label>
-              <button onClick={()=>setBookItems([...bookItems,{item_id:'',qty:1}])} className="text-emerald-600 hover:underline text-xs">+ Tambah Item</button>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="text-base font-black text-slate-900">Form Booking Pendaftaran Baru</h3>
+              <button onClick={()=>setShowBooking(false)} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
             </div>
-            {bookItems.map((it,idx)=>(
-              <div key={idx} className="flex gap-2 mb-2">
-                <select value={it.item_id} onChange={e=>{const next=[...bookItems];next[idx]={...next[idx],item_id:e.target.value};setBookItems(next);}} className="flex-1 border rounded-lg px-3 py-2 text-sm">
-                  <option value="">-- Pilih Barang --</option>
-                  {invItems.map((i:any)=>(<option key={i.id} value={i.id}>{i.name} (Stok: {i.stock_total})</option>))}
-                </select>
-                <input type="number" inputMode="numeric" pattern="[0-9]*" min={1} value={it.qty} onChange={e=>{const next=[...bookItems];next[idx]={...next[idx],qty:Number(e.target.value)};setBookItems(next);}} className="w-20 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"/>
-                <button onClick={()=>setBookItems(bookItems.filter((_,i)=>i!==idx))} className="text-red-600 hover:underline text-xs px-2">Hapus</button>
-              </div>
-            ))}
-          </div>
 
-          <div className="mt-4 flex gap-2"><button onClick={createBooking} className="bg-emerald-600 text-white px-6 py-2 rounded-lg text-sm">Buat Booking</button><button onClick={()=>setShowBooking(false)} className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg text-sm">Batal</button></div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Cari Jamaah (NIK / Nama) *</label>
+                <div className="flex gap-2">
+                  <input value={jamaahSearch} onChange={e=>setJamaahSearch(e.target.value)} className="flex-1 border rounded-xl px-3 py-2 text-xs" placeholder="Ketik NIK atau Nama..."/>
+                  <button onClick={searchJamaah} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold">Cari</button>
+                </div>
+                {jamaahList.length>0 && (
+                  <div className="mt-2 border rounded-xl max-h-40 overflow-y-auto bg-white shadow-md">
+                    {jamaahList.map((j:any)=>(<button key={j.id} onClick={()=>{setBookForm({...bookForm,jamaah_id:j.id});setJamaahList([]);setJamaahSearch(j.full_name+' ('+j.nik+')');}} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-xs border-b border-slate-100">{j.full_name} - {j.nik} - {j.phone}</button>))}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Batch Keberangkatan *</label>
+                  <select value={bookForm.batch_id||''} onChange={e=>setBookForm({...bookForm,batch_id:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
+                    <option value="">-- Pilih Batch --</option>
+                    {batches.map((b:any)=>(<option key={b.id} value={b.id}>{b.batch_name} - {b.package_name} ({fmtRp(b.price)}) — Kuota: {b.filled_quota||0}/{b.quota||45}</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Pembayaran Awal (DP)</label>
+                  <input type="number" inputMode="numeric" pattern="[0-9]*" value={bookForm.initial_payment||''} onChange={e=>setBookForm({...bookForm,initial_payment:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs font-mono" placeholder="0"/>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Metode Bayar</label>
+                  <select value={bookForm.payment_type||'CASH'} onChange={e=>setBookForm({...bookForm,payment_type:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
+                    <option>CASH</option><option>TRANSFER</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Live Price & Remaining Balance Calculator */}
+              {(() => {
+                const selectedBatch = batches.find((b: any) => String(b.id) === String(bookForm.batch_id));
+                const totalPrice = selectedBatch ? selectedBatch.price : 0;
+                const payAmount = Number(bookForm.initial_payment) || 0;
+                const remaining = Math.max(0, totalPrice - payAmount);
+                if (!selectedBatch) return null;
+                return (
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase">Harga Paket</p>
+                      <p className="text-sm font-bold text-slate-900">{fmtRp(totalPrice)}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase">Dibayar Sekarang</p>
+                      <p className="text-sm font-bold text-emerald-600">{fmtRp(payAmount)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase">Sisa Tagihan</p>
+                      <p className={"text-sm font-black " + (remaining === 0 ? "text-emerald-700" : "text-rose-600")}>
+                        {fmtRp(remaining)} {remaining === 0 ? " LUNAS" : ""}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="border-t border-slate-100 pt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Perlengkapan Logistik (Opsional)</label>
+                  <button onClick={()=>setBookItems([...bookItems,{item_id:'',qty:1}])} className="text-xs text-indigo-600 font-bold hover:underline">+ Tambah Item</button>
+                </div>
+                <div className="space-y-2">
+                  {bookItems.map((it,idx)=>(
+                    <div key={idx} className="flex gap-2 items-center">
+                      <select value={it.item_id} onChange={e=>{const next=[...bookItems];next[idx]={...next[idx],item_id:e.target.value};setBookItems(next);}} className="flex-1 border rounded-xl px-3 py-1.5 text-xs">
+                        <option value="">-- Pilih Barang Inventaris --</option>
+                        {invItems.map((i:any)=>(<option key={i.id} value={i.id}>{i.name} (Stok: {i.stock_total})</option>))}
+                      </select>
+                      <input type="number" inputMode="numeric" pattern="[0-9]*" min={1} value={it.qty} onChange={e=>{const next=[...bookItems];next[idx]={...next[idx],qty:Number(e.target.value)};setBookItems(next);}} className="w-20 border rounded-xl px-3 py-1.5 text-xs text-center font-mono" placeholder="Qty"/>
+                      <button onClick={()=>setBookItems(bookItems.filter((_,i)=>i!==idx))} className="text-rose-600 text-xs font-bold px-2">Hapus</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <button onClick={()=>setShowBooking(false)} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
+              <button onClick={createBooking} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Proses Booking</button>
+            </div>
+          </div>
         </div>
       )}
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="bg-gray-50 text-left">
-            <th className="p-3">Kode</th><th className="p-3">Jamaah</th><th className="p-3">Paket</th><th className="p-3">Total</th>
-            <th className="p-3">Dibayar</th><th className="p-3">Sisa</th><th className="p-3">Status</th><th className="p-3">Aksi</th>
-          </tr></thead>
-          <tbody>
-            {txList.map((t:any)=>(<tr key={t.id} className="border-b hover:bg-gray-50">
-              <td className="p-3 font-mono text-xs">{t.booking_code}</td><td className="p-3">{t.full_name}</td>
-              <td className="p-3 text-xs">{t.package_name}</td><td className="p-3">{fmtRp(t.total_amount)}</td>
-              <td className="p-3 text-green-600">{fmtRp(t.paid_amount)}</td><td className="p-3 text-red-600">{fmtRp(t.remaining_amount)}</td>
-              <td className="p-3"><StatusBadge s={t.status}/></td>
-              <td className="p-3"><button onClick={()=>loadDetail(t.id)} className="text-blue-600 hover:underline text-xs">Detail</button></td>
-            </tr>))}
-            {txList.length===0 && <tr><td colSpan={8} className="p-6 text-center text-gray-400">Belum ada transaksi</td></tr>}
+
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
+              <th className="p-3">Kode</th>
+              <th className="p-3">Jamaah</th>
+              <th className="p-3">Paket</th>
+              <th className="p-3 text-right">Total</th>
+              <th className="p-3 text-right">Dibayar</th>
+              <th className="p-3 text-right">Sisa</th>
+              <th className="p-3">Status</th>
+              <th className="p-3 text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {txList.map((t:any)=>(
+              <tr key={t.id} className="hover:bg-slate-50 transition">
+                <td className="p-3 font-mono text-slate-500 font-bold">{t.booking_code}</td>
+                <td className="p-3 font-bold text-slate-900">{t.full_name}</td>
+                <td className="p-3 text-slate-600">{t.package_name}</td>
+                <td className="p-3 text-right font-mono font-bold text-slate-900">{fmtRp(t.total_amount)}</td>
+                <td className="p-3 text-right font-mono font-bold text-emerald-600">{fmtRp(t.paid_amount)}</td>
+                <td className="p-3 text-right font-mono font-bold text-rose-600">{fmtRp(t.remaining_amount)}</td>
+                <td className="p-3"><StatusBadge s={t.status}/></td>
+                <td className="p-3 text-right">
+                  <button onClick={()=>loadDetail(t.id)} className="text-indigo-600 hover:underline font-bold">Detail</button>
+                </td>
+              </tr>
+            ))}
+            {txList.length===0 && <tr><td colSpan={8} className="text-center py-8 text-slate-400">Belum ada transaksi pendaftaran.</td></tr>}
           </tbody>
-        </table></div>
+        </table>
       </div>
     </div>
   );
 }
-
 
 /* ===================== INVENTORY TAB ===================== */
 function InventoryTab() {
