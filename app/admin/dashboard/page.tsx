@@ -1822,6 +1822,7 @@ function PengaturanTab() {
   const [profile, setProfile] = useState<any>({});
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showAddBankModal, setShowAddBankModal] = useState(false);
   const [newBank, setNewBank] = useState({ bank_name: '', account_number: '', account_holder: '' });
 
   const loadData = useCallback(() => {
@@ -1874,6 +1875,7 @@ function PengaturanTab() {
     if ((window as any).__showAdminToast) (window as any).__showAdminToast(d.message, d.success ? 'success' : 'error');
     if (d.success) {
       setNewBank({ bank_name: '', account_number: '', account_holder: '' });
+      setShowAddBankModal(false);
       loadData();
     }
   };
@@ -1897,7 +1899,7 @@ function PengaturanTab() {
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div>
             <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-              <span></span> Identitas Resmi & Kop Cetak Dokumen
+              <span className="w-2 h-2 rounded-full bg-slate-900"></span> Identitas Resmi & Kop Cetak Dokumen
             </h3>
             <p className="text-xs text-slate-500">Informasi ini otomatis tampil pada header Kwitansi, Manifest, Label Koper, dan Laporan.</p>
           </div>
@@ -1917,7 +1919,7 @@ function PengaturanTab() {
               value={profile.company_name || ''}
               onChange={e => setProfile({ ...profile, company_name: e.target.value })}
               placeholder="Contoh: Al-Barakah Tour & Travel"
-              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-slate-900 focus:outline-none"
               required
             />
           </div>
@@ -1927,7 +1929,7 @@ function PengaturanTab() {
               value={profile.legal_name || ''}
               onChange={e => setProfile({ ...profile, legal_name: e.target.value })}
               placeholder="Contoh: PT. Al-Barakah Mandiri Utama"
-              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-slate-900 focus:outline-none"
             />
           </div>
 
@@ -1937,7 +1939,7 @@ function PengaturanTab() {
               value={profile.ppiu_number || ''}
               onChange={e => setProfile({ ...profile, ppiu_number: e.target.value })}
               placeholder="Contoh: Izin Kemenag No. 123/PPIU/2024"
-              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-slate-900 focus:outline-none"
               required
             />
           </div>
@@ -1947,62 +1949,41 @@ function PengaturanTab() {
             <input
               value={profile.director_name || ''}
               onChange={e => setProfile({ ...profile, director_name: e.target.value })}
-              placeholder="Nama penandatangan kwitansi resmi"
-              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              placeholder="Contoh: H. Ahmad Fauzi"
+              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-slate-900 focus:outline-none"
               required
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">No. Telepon / WhatsApp Kantor *</label>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Nomor Telepon / WhatsApp</label>
             <input
               value={profile.phone || ''}
               onChange={e => setProfile({ ...profile, phone: e.target.value })}
-              placeholder="Contoh: 0812-3456-7890 / 021-5551234"
-              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              required
+              placeholder="Contoh: 081234567890"
+              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-slate-900 focus:outline-none"
             />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Email Resmi</label>
             <input
+              type="email"
               value={profile.email || ''}
               onChange={e => setProfile({ ...profile, email: e.target.value })}
-              placeholder="info@albarakah.co.id"
-              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Website Resmi</label>
-            <input
-              value={profile.website || ''}
-              onChange={e => setProfile({ ...profile, website: e.target.value })}
-              placeholder="travel.idigivice.com"
-              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Kota Kantor</label>
-            <input
-              value={profile.city || ''}
-              onChange={e => setProfile({ ...profile, city: e.target.value })}
-              placeholder="Contoh: Jakarta Selatan"
-              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              placeholder="info@travelumroh.com"
+              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-slate-900 focus:outline-none"
             />
           </div>
 
           <div className="md:col-span-2">
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Alamat Kantor Lengkap *</label>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Alamat Kantor Pusat</label>
             <textarea
               rows={2}
               value={profile.address || ''}
               onChange={e => setProfile({ ...profile, address: e.target.value })}
-              placeholder="Jl. Jenderal Sudirman No. 45, Gedung Menara Berkah Lt. 3, Jakarta Selatan"
-              className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              required
+              placeholder="Jalan Raya Umroh No. 45, Jakarta Selatan"
+              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-slate-900 focus:outline-none"
             />
           </div>
         </div>
@@ -2010,85 +1991,107 @@ function PengaturanTab() {
 
       {/* Bank Accounts Section */}
       <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-6 space-y-6">
-        <div>
-          <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-            <span></span> Rekening Bank Resmi Perusahaan
-          </h3>
-          <p className="text-xs text-slate-500">Daftar rekening bank ini akan otomatis tertera pada kwitansi dan invoice pembayaran jemaah.</p>
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div>
+            <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-600"></span> Rekening Bank Pembayaran Jamaah
+            </h3>
+            <p className="text-xs text-slate-500">Daftar rekening tujuan transfer yang akan tampil pada halaman pembayaran & kwitansi.</p>
+          </div>
+          <button
+            onClick={() => setShowAddBankModal(true)}
+            className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow-xs flex items-center gap-1.5"
+          >
+            <span>+ Tambah Rekening</span>
+          </button>
         </div>
 
-        {/* Existing Banks */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-          {bankAccounts.map(b => (
-            <div key={b.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {bankAccounts.map((b: any) => (
+            <div key={b.id} className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex flex-col justify-between space-y-3 shadow-xs">
               <div>
-                <p className="font-bold text-slate-900 text-sm">{b.bank_name}</p>
-                <p className="font-mono text-xs font-bold text-emerald-700 tracking-wider mt-0.5">{b.account_number}</p>
-                <p className="text-xs text-slate-500 mt-0.5">a.n. {b.account_holder}</p>
+                <div className="flex justify-between items-start">
+                  <span className="text-xs font-black px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-800">{b.bank_name}</span>
+                  <button onClick={() => deleteBank(b.id)} className="text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg text-xs font-bold transition">
+                    Hapus
+                  </button>
+                </div>
+                <p className="font-mono text-base font-black text-slate-900 mt-3">{b.account_number}</p>
+                <p className="text-xs font-bold text-slate-600 mt-0.5">a.n. {b.account_holder}</p>
               </div>
-              <button
-                onClick={() => deleteBank(b.id)}
-                className="text-rose-600 hover:text-rose-800 p-2 text-xs font-bold rounded-lg hover:bg-rose-50 transition"
-              >
-                 Hapus
-              </button>
             </div>
           ))}
           {bankAccounts.length === 0 && (
-            <div className="md:col-span-2 p-6 text-center text-xs text-slate-400 border border-dashed rounded-xl">
-              Belum ada rekening bank terdaftar.
-            </div>
+            <div className="col-span-full text-center py-12 text-slate-400 text-xs">Belum ada rekening bank terdaftar.</div>
           )}
         </div>
-
-        {/* Add Bank Form */}
-        <form onSubmit={addBankAccount} className="pt-4 border-t border-slate-100 space-y-3">
-          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">+ Tambah Rekening Baru</h4>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <input
-              value={newBank.bank_name}
-              onChange={e => setNewBank({ ...newBank, bank_name: e.target.value })}
-              placeholder="Nama Bank (mis. BSI / BCA)"
-              className="border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              required
-            />
-            <input
-              value={newBank.account_number}
-              onChange={e => setNewBank({ ...newBank, account_number: e.target.value })}
-              placeholder="Nomor Rekening"
-              className="border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              required
-            />
-            <input
-              value={newBank.account_holder}
-              onChange={e => setNewBank({ ...newBank, account_holder: e.target.value })}
-              placeholder="Atas Nama (a.n)"
-              className="border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            className="bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow-xs"
-          >
-            + Simpan Rekening
-          </button>
-        </form>
       </div>
+
+      {/* Add Bank Centered Modal Pop-up */}
+      {showAddBankModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-6">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+              <h3 className="text-base font-black text-slate-900">Tambah Rekening Bank Baru</h3>
+              <button onClick={() => setShowAddBankModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+            </div>
+            <form onSubmit={addBankAccount} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Nama Bank (Cth: BCA / Mandiri / BSI)</label>
+                <input
+                  type="text"
+                  value={newBank.bank_name}
+                  onChange={e => setNewBank({ ...newBank, bank_name: e.target.value })}
+                  placeholder="BCA / Mandiri / BSI"
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-slate-900 focus:outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Nomor Rekening</label>
+                <input
+                  type="text"
+                  value={newBank.account_number}
+                  onChange={e => setNewBank({ ...newBank, account_number: e.target.value })}
+                  placeholder="1234567890"
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:ring-2 focus:ring-slate-900 focus:outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Atas Nama (Pemilik Rekening)</label>
+                <input
+                  type="text"
+                  value={newBank.account_holder}
+                  onChange={e => setNewBank({ ...newBank, account_holder: e.target.value })}
+                  placeholder="PT. Travel Umroh"
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-slate-900 focus:outline-none"
+                  required
+                />
+              </div>
+              <div className="pt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddBankModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-5 py-2 rounded-xl transition shadow-xs"
+                >
+                  Simpan Rekening
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-/* ===================== MAIN LAYOUT ===================== */
-interface MenuGroup {
-  groupName: string;
-  items: { id: Tab; icon: React.ReactNode; label: string }[];
-}
-
-
-// Checklist Kelengkapan & Logistik Component
-
-// Checklist Kelengkapan & Logistik Component (Interactive Checkbox Grid)
 function ChecklistTab() {
   const [jamaahList, setJamaahList] = useState<any[]>([]);
   const [selectedJamaah, setSelectedJamaah] = useState<any>(null);
