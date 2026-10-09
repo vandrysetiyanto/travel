@@ -1436,60 +1436,105 @@ function KelolaStaf() {
   useEffect(()=>{load();},[]);
 
   const save = async () => {
-    if(!form.name||!form.email||(mode==='add'&&!form.password)) return alert('Nama, email, dan password wajib diisi');
+    if(!form.name||!form.username||(mode==='add'&&!form.password)) return alert('Nama, username, dan password wajib diisi');
     const action = mode === 'edit' ? 'UPDATE_USER' : 'CREATE_USER';
     const res = await fetch('/api/admin/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form, action})});
-    const d = await res.json(); (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, d.success ? 'success' : 'error') : alert(d.message); if(d.success){setMode('idle');setForm({});load();}
+    const d = await res.json(); 
+    if(d.success){
+      alert('Berhasil menyimpan staf');
+      setMode('idle');
+      setForm({});
+      load();
+    } else {
+      alert(d.message || 'Gagal menyimpan');
+    }
   };
+
   const remove = async (id: number) => {
     if(!confirm('Hapus staf ini?')) return;
     const res = await fetch('/api/admin/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'DELETE_USER', id})});
-    const d = await res.json(); (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, d.success ? 'success' : 'error') : alert(d.message); if(d.success) load();
+    const d = await res.json(); 
+    if(d.success) load(); 
+    else alert(d.message);
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end"><button onClick={()=>{setForm({});setMode('add');}} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm">+ Tambah Staf</button></div>
+      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div>
+          <h3 className="text-base font-black text-slate-900">Kelola Staf & Admin</h3>
+          <p className="text-xs text-slate-500">Manajemen akun staf internal tour & travel.</p>
+        </div>
+        <button onClick={()=>{setForm({});setMode('add');}} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition">+ Tambah Staf</button>
+      </div>
+
       {mode !== 'idle' && (
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="font-bold text-gray-800 mb-4">{mode==='edit'?'Edit Staf':'Tambah Staf'}</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <FInput label="Nama" field="name" form={form} setForm={setForm}/><FInput label="Email" field="email" type="email" form={form} setForm={setForm}/>
-            <FInput label={mode==='edit'?'Password (kosongkan jika tidak diubah)':'Password'} field="password" type="password" form={form} setForm={setForm}/>
-            <div><label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
-            <select value={form.role||'ADMIN'} onChange={e=>setForm({...form,role:e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
-              <option value="ADMIN">Admin</option><option value="OWNER">Owner</option>
-            </select></div>
-          </div>
-          <div className="mt-4 flex gap-2">
-            <button onClick={save} className="bg-emerald-600 text-white px-6 py-2 rounded-lg text-sm">Simpan</button>
-            <button onClick={()=>setMode('idle')} className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg text-sm">Batal</button>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="text-base font-black text-slate-900">{mode==='edit'?'Edit Data Staf':'Tambah Staf Baru'}</h3>
+              <button onClick={()=>setMode('idle')} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Nama Lengkap *</label>
+                <input type="text" value={form.name||''} onChange={e=>setForm({...form, name:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" placeholder="Nama lengkap..." />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Username *</label>
+                <input type="text" value={form.username||''} onChange={e=>setForm({...form, username:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" placeholder="Username login..." />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Password {mode==='edit' && '(Kosongkan jika tidak diubah)'}</label>
+                <input type="password" value={form.password||''} onChange={e=>setForm({...form, password:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" placeholder="Password..." />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Role / Hak Akses *</label>
+                <select value={form.role||'STAFF'} onChange={e=>setForm({...form, role:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
+                  <option value="STAFF">STAFF</option>
+                  <option value="OWNER">OWNER</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <button onClick={()=>setMode('idle')} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
+              <button onClick={save} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Simpan Staf</button>
+            </div>
           </div>
         </div>
       )}
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="bg-gray-50 text-left">
-            <th className="p-3">Nama</th><th className="p-3">Email</th><th className="p-3">Role</th><th className="p-3">Aksi</th>
-          </tr></thead>
-          <tbody>
-            {list.map((u:any)=>(<tr key={u.id} className="border-b hover:bg-gray-50">
-              <td className="p-3 font-medium">{u.name}</td><td className="p-3">{u.email}</td>
-              <td className="p-3"><span className={'px-2 py-1 rounded-full text-xs ' + (u.role==='OWNER'?'bg-purple-100 text-purple-700':'bg-blue-100 text-blue-700')}>{u.role}</span></td>
-              <td className="p-3 space-x-2">
-                <button onClick={()=>{setForm(u);setMode('edit');}} className="text-blue-600 hover:underline text-xs">Edit</button>
-                <button onClick={()=>remove(u.id)} className="text-red-600 hover:underline text-xs">Hapus</button>
-              </td>
-            </tr>))}
-            {list.length===0 && <tr><td colSpan={4} className="p-6 text-center text-gray-400">Belum ada data staf</td></tr>}
+
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
+              <th className="p-3">Nama</th>
+              <th className="p-3">Username</th>
+              <th className="p-3">Role</th>
+              <th className="p-3 text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {list.map(u=>(
+              <tr key={u.id} className="hover:bg-slate-50 transition">
+                <td className="p-3 font-bold text-slate-900">{u.name}</td>
+                <td className="p-3 font-mono text-slate-600">{u.username}</td>
+                <td className="p-3">
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${u.role==='OWNER'?'bg-indigo-50 text-indigo-700':'bg-slate-100 text-slate-700'}`}>{u.role}</span>
+                </td>
+                <td className="p-3 text-right space-x-2">
+                  <button onClick={()=>{setForm(u);setMode('edit');}} className="text-indigo-600 hover:underline font-bold">Edit</button>
+                  <button onClick={()=>remove(u.id)} className="text-rose-600 hover:underline font-bold">Hapus</button>
+                </td>
+              </tr>
+            ))}
           </tbody>
-        </table></div>
+        </table>
       </div>
     </div>
   );
 }
 
-/* ===================== VERIFIKASI PEMBAYARAN ===================== */
 function PembayaranTab() {
   const [kode, setKode] = useState('');
   const [data, setData] = useState<any>(null);
