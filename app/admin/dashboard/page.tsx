@@ -1179,263 +1179,155 @@ function ManifestTab() {
     import('xlsx').then(XLSX => {
       const data = filteredManifest.map((m:any,i:number)=>({'No':i+1,'Nama':m.full_name,'NIK':m.nik,'JK':m.gender,'TTL':m.birth_place+', '+m.birth_date,'No. Paspor':m.passport_number||'-','Exp Paspor':m.passport_expiry||'-','Paspor':m.passport_status,'Visa':m.visa_status,'HP':m.phone,'Paket':m.package_name,'Batch':m.batch_name,'Berangkat':m.departure_date,'Maskapai':m.airline,'Hotel Makkah':m.hotel_makkah,'Hotel Madinah':m.hotel_madinah}));
       const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Manifest');
-      XLSX.writeFile(wb, 'manifest-keberangkatan.xlsx');
-    });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Manifest Keberangkatan");
+      XLSX.writeFile(wb, `Manifest-Keberangkatan-${batchId || 'Semua'}.xlsx`);
+    }).catch(() => alert('Library xlsx belum siap'));
   };
 
-  const printManifest = async () => {
-    let company: any = { company_name: 'Al-Barakah Tour & Travel', legal_name: 'PT. Al-Barakah Mandiri Utama', ppiu_number: 'Izin Kemenag No. 123/PPIU/2024', address: 'Jakarta Selatan', phone: '0812-3456-7890' };
-    try {
-      const res = await fetch('/api/admin/settings');
-      const d = await res.json();
-      if (d.success && d.profile?.company_name) company = d.profile;
-    } catch {}
-
-    const w = window.open('','','width=1100,height=750');
-    if(!w) return;
-    const rows = filteredManifest.map((m:any,i:number)=>`<tr><td style="text-align:center;">${i+1}</td><td><b>${m.full_name}</b></td><td style="font-family:monospace;">${m.nik}</td><td>${m.gender}</td><td style="font-family:monospace;">${m.passport_number||'-'}</td><td>${m.passport_status}</td><td>${m.visa_status}</td><td>${m.phone}</td></tr>`).join('');
+  const printManifest = () => {
+    const w = window.open('', '', 'width=900,height=800');
+    if (!w) return;
     w.document.write(`
       <html>
         <head>
-          <title>Manifest Keberangkatan - ${filteredManifest[0]?.batch_name||'Umroh'}</title>
+          <title>Manifest Keberangkatan Jamaah</title>
           <style>
-            body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; padding: 25px; color: #1e293b; }
-            .header-kop { border-bottom: 2px solid #059669; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: flex-end; }
-            .kop-brand h2 { margin: 0; color: #059669; font-size: 18px; text-transform: uppercase; }
-            .kop-brand p { margin: 2px 0; font-size: 10px; color: #64748b; }
-            .title-sec { text-align: right; }
-            .title-sec h3 { margin: 0; font-size: 15px; color: #0f172a; text-transform: uppercase; }
-            .title-sec p { margin: 2px 0; font-size: 11px; font-weight: bold; color: #059669; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
-            th, td { border: 1px solid #cbd5e1; padding: 6px 8px; }
-            th { background: #059669; color: white; text-transform: uppercase; font-size: 10px; }
-            tr:nth-child(even) { background: #f8fafc; }
-            .footer-info { margin-top: 20px; display: flex; justify-content: space-between; font-size: 11px; }
+            body { font-family: sans-serif; padding: 20px; color: #1e293b; }
+            h2, p { margin: 0 0 5px 0; }
+            .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: flex-end; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px; }
+            th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+            th { background: #f1f5f9; font-weight: bold; }
           </style>
         </head>
         <body>
-          <div class="header-kop">
-            <div class="kop-brand">
-              <h2>${company.company_name}</h2>
-              <p>${company.legal_name ? company.legal_name + ' | ' : ''}${company.ppiu_number}</p>
-              <p>${company.address} | Telp: ${company.phone}</p>
+          <div class="header">
+            <div>
+              <h2>MANIFEST KEBERANGKATAN JAMAAH</h2>
+              <p>Total Jamaah: ${filteredManifest.length} Orang</p>
             </div>
-            <div class="title-sec">
-              <h3>MANIFEST KEBERANGKATAN JAMAAH</h3>
-              <p>${filteredManifest[0]?.batch_name||''} - ${filteredManifest[0]?.package_name||''}</p>
-            </div>
+            <div><p>Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}</p></div>
           </div>
           <table>
             <thead>
               <tr>
-                <th style="width:30px;">No</th>
-                <th>Nama Lengkap</th>
-                <th>NIK</th>
-                <th>JK</th>
-                <th>No. Paspor</th>
-                <th>Status Paspor</th>
-                <th>Status Visa</th>
-                <th>No. HP/WA</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-          <div class="footer-info">
-            <p><b>Total Jamaah:</b> ${filteredManifest.length} Orang</p>
-            <p>Dicetak pada: ${new Date().toLocaleDateString('id-ID')} | Petugas Operasional</p>
-          </div>
-        </body>
-      </html>
-    `);
-    w.document.close(); w.print();
-  };
-
-  const printLabel = async (m: any) => {
-    let company: any = { company_name: 'Al-Barakah Tour & Travel', phone: '0812-3456-7890' };
-    try {
-      const res = await fetch('/api/admin/settings');
-      const d = await res.json();
-      if (d.success && d.profile?.company_name) company = d.profile;
-    } catch {}
-
-    const w = window.open('','','width=450,height=340');
-    if(!w) return;
-    w.document.write(`
-      <html>
-        <head>
-          <title>Label Koper - ${m.full_name}</title>
-          <style>
-            body { font-family: 'Segoe UI', Arial, sans-serif; padding: 15px; text-align: center; }
-            .box { border: 3px solid #059669; border-radius: 12px; padding: 18px; width: 340px; margin: auto; background: #fff; }
-            h2 { margin: 0; font-size: 16px; color: #059669; text-transform: uppercase; font-weight: 800; }
-            p.sub { margin: 2px 0 10px; font-size: 10px; color: #64748b; border-bottom: 1px dashed #cbd5e1; padding-bottom: 6px; }
-            .big { font-size: 20px; font-weight: 900; color: #0f172a; margin: 8px 0; text-transform: uppercase; letter-spacing: 0.5px; }
-            .info { font-size: 11px; text-align: left; background: #f8fafc; padding: 8px 12px; border-radius: 8px; margin-top: 10px; line-height: 1.5; color: #334155; }
-            .phone-badge { font-weight: bold; color: #059669; }
-          </style>
-        </head>
-        <body>
-          <div class="box">
-            <h2>${company.company_name}</h2>
-            <p class="sub">Hotline Travel: ${company.phone}</p>
-            <div class="big">${m.full_name}</div>
-            <div class="info">
-              <div> <b>Paket:</b> ${m.package_name}</div>
-              <div> <b>Batch:</b> ${m.batch_name}</div>
-              <div> <b>Berangkat:</b> ${m.departure_date}</div>
-              <div> <b>HP Jamaah:</b> <span class="phone-badge">${m.phone}</span></div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
-    w.document.close(); w.print();
-  };
-
-  return (
-    <div className="space-y-5">
-      {/* Filter and Actions Bar */}
-      <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-5 space-y-4">
-        <div className="flex flex-wrap gap-3 items-end justify-between">
-          <div className="flex-1 min-w-[240px]">
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Pilih Batch Keberangkatan</label>
-            <select value={batchId} onChange={e=>setBatchId(e.target.value)} className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none">
-              <option value="">Semua Batch</option>
-              {batches.map((b:any)=>(<option key={b.id} value={b.id}>{b.batch_name} - {b.package_name}</option>))}
-            </select>
-          </div>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <button onClick={printManifest} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shadow-xs"> Cetak</button>
-            <button onClick={exportExcel} className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shadow-xs"> Export Excel</button>
-          </div>
-        </div>
-
-        {/* Quick Filter Chips */}
-        <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100 items-center">
-          <span className="text-xs font-semibold text-slate-500 mr-1">Filter Dokumen:</span>
-          <button
-            onClick={() => setDocFilter('ALL')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-              docFilter === 'ALL' ? 'bg-slate-800 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            Semua ({manifest.length})
-          </button>
-          <button
-            onClick={() => setDocFilter('NO_VISA')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-              docFilter === 'NO_VISA' ? 'bg-rose-600 text-white shadow-xs' : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
-            }`}
-          >
-            <span> Visa Belum Terbit</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/40 font-mono font-bold">{missingVisaCount}</span>
-          </button>
-          <button
-            onClick={() => setDocFilter('NO_PASSPORT')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-              docFilter === 'NO_PASSPORT' ? 'bg-amber-600 text-white shadow-xs' : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
-            }`}
-          >
-            <span> Paspor Belum Ada</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/40 font-mono font-bold">{missingPassportCount}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Mobile Card View (block md:hidden) */}
-      <div className="grid grid-cols-1 gap-3.5 md:hidden">
-        {filteredManifest.map((m: any, i: number) => (
-          <div key={i} className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200 space-y-3">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">#{i+1}</span>
-                <h4 className="font-bold text-slate-900 text-base mt-1">{m.full_name}</h4>
-                <p className="text-xs text-slate-500 font-mono">{m.nik} ({m.gender})</p>
-              </div>
-              <button onClick={() => printLabel(m)} className="bg-blue-50 text-blue-700 border border-blue-200 font-bold px-3 py-1.5 rounded-xl text-xs hover:bg-blue-100">
-                 Label
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl text-xs">
-              <div>
-                <p className="text-slate-400 text-[10px] uppercase font-bold">Status Paspor</p>
-                <div className="mt-0.5 flex items-center gap-1">
-                  <DocBadge s={m.passport_status} />
-                  <span className="font-mono text-slate-700 truncate">{m.passport_number || '-'}</span>
-                </div>
-              </div>
-              <div>
-                <p className="text-slate-400 text-[10px] uppercase font-bold">Status Visa</p>
-                <div className="mt-0.5"><DocBadge s={m.visa_status} /></div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100">
-              <span className="truncate max-w-[180px]">{m.batch_name}</span>
-              <span className="font-medium text-slate-700">{m.airline || '-'}</span>
-            </div>
-          </div>
-        ))}
-        {filteredManifest.length === 0 && (
-          <div className="bg-white rounded-2xl p-8 text-center text-slate-400 border border-slate-200">
-            Tidak ada jamaah yang cocok dengan filter.
-          </div>
-        )}
-      </div>
-
-      {/* Desktop Table View (hidden md:block) */}
-      <div className="hidden md:block bg-white rounded-2xl shadow-xs border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50 text-left text-xs font-bold text-slate-600 border-b border-slate-200">
-                <th className="p-3.5">No</th>
-                <th className="p-3.5">Nama Jamaah</th>
-                <th className="p-3.5">NIK</th>
-                <th className="p-3.5">JK</th>
-                <th className="p-3.5">No. Paspor</th>
-                <th className="p-3.5">Status Paspor</th>
-                <th className="p-3.5">Status Visa</th>
-                <th className="p-3.5">Batch</th>
-                <th className="p-3.5">Maskapai</th>
-                <th className="p-3.5 text-right">Aksi</th>
+                <th>No</th><th>Nama Jamaah</th><th>NIK</th><th>L/P</th><th>No. Paspor</th><th>Status Paspor</th><th>Status Visa</th><th>No. HP</th>
               </tr>
             </thead>
             <tbody>
-              {filteredManifest.map((m: any, i: number) => (
-                <tr key={i} className="border-b border-slate-100 hover:bg-slate-50/80 transition">
-                  <td className="p-3.5 text-slate-400 font-mono text-xs">{i + 1}</td>
-                  <td className="p-3.5 font-bold text-slate-900">{m.full_name}</td>
-                  <td className="p-3.5 font-mono text-xs text-slate-600">{m.nik}</td>
-                  <td className="p-3.5">{m.gender}</td>
-                  <td className="p-3.5 font-mono text-xs">{m.passport_number || '-'}</td>
-                  <td className="p-3.5"><DocBadge s={m.passport_status} /></td>
-                  <td className="p-3.5"><DocBadge s={m.visa_status} /></td>
-                  <td className="p-3.5 text-xs text-slate-600">{m.batch_name}</td>
-                  <td className="p-3.5 text-xs text-slate-600">{m.airline}</td>
-                  <td className="p-3.5 text-right">
-                    <button onClick={() => printLabel(m)} className="text-blue-600 hover:text-blue-800 font-bold text-xs hover:underline">
-                       Cetak Label
-                    </button>
-                  </td>
+              ${filteredManifest.map((m:any, i:number)=>`
+                <tr>
+                  <td>${i+1}</td>
+                  <td><b>${m.full_name}</b></td>
+                  <td>${m.nik}</td>
+                  <td>${m.gender}</td>
+                  <td>${m.passport_number || '-'}</td>
+                  <td>${m.passport_status || '-'}</td>
+                  <td>${m.visa_status || '-'}</td>
+                  <td>${m.phone}</td>
                 </tr>
-              ))}
-              {filteredManifest.length === 0 && (
-                <tr><td colSpan={10} className="p-8 text-center text-slate-400">Tidak ada data manifest</td></tr>
-              )}
+              `).join('')}
             </tbody>
           </table>
+        </body>
+      </html>
+    `);
+    w.document.close();
+    w.print();
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Filters & Actions Header */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Pilih Batch Keberangkatan</label>
+            <select value={batchId} onChange={e=>setBatchId(e.target.value)} className="border rounded-xl px-3 py-2 text-xs font-bold text-slate-900 bg-white">
+              <option value="">-- Semua Batch Keberangkatan --</option>
+              {batches.map((b:any)=>(<option key={b.id} value={b.id}>{b.batch_name} ({b.package_name})</option>))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Filter Dokumen</label>
+            <div className="flex gap-1">
+              {[
+                { id: 'ALL', label: `Semua (${manifest.length})` },
+                { id: 'NO_PASSPORT', label: `Belum Paspor (${missingPassportCount})` },
+                { id: 'NO_VISA', label: `Belum Visa (${missingVisaCount})` },
+              ].map(f=>(
+                <button
+                  key={f.id}
+                  onClick={()=>setDocFilter(f.id as any)}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold transition ${docFilter===f.id ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={printManifest} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl text-xs transition">
+            🖨️ Cetak / PDF
+          </button>
+          <button onClick={exportExcel} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow-xs">
+            📊 Export Excel
+          </button>
         </div>
       </div>
-      <p className="text-xs font-semibold text-slate-500">Menampilkan {filteredManifest.length} dari {manifest.length} total jamaah</p>
+
+      {/* Manifest Table */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
+              <th className="p-3">No</th>
+              <th className="p-3">Nama Jamaah</th>
+              <th className="p-3">NIK</th>
+              <th className="p-3">L/P</th>
+              <th className="p-3">No. Paspor</th>
+              <th className="p-3">Status Paspor</th>
+              <th className="p-3">Status Visa</th>
+              <th className="p-3">No. WhatsApp</th>
+              <th className="p-3">Batch / Paket</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {filteredManifest.map((m:any, i:number)=>(
+              <tr key={m.id || i} className="hover:bg-slate-50 transition">
+                <td className="p-3 font-mono text-slate-400">{i+1}</td>
+                <td className="p-3 font-bold text-slate-900">{m.full_name}</td>
+                <td className="p-3 font-mono text-slate-600">{m.nik}</td>
+                <td className="p-3 text-slate-600">{m.gender}</td>
+                <td className="p-3 font-mono text-slate-600">{m.passport_number || '-'}</td>
+                <td className="p-3">
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${m.passport_status==='SUDAH'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
+                    {m.passport_status || 'BELUM'}
+                  </span>
+                </td>
+                <td className="p-3">
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${m.visa_status==='ISSUED'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
+                    {m.visa_status || 'PENDING'}
+                  </span>
+                </td>
+                <td className="p-3 font-mono text-slate-600">{m.phone}</td>
+                <td className="p-3 text-slate-600">{m.batch_name}</td>
+              </tr>
+            ))}
+            {filteredManifest.length===0 && (
+              <tr><td colSpan={9} className="text-center py-8 text-slate-400">Tidak ada data manifest yang sesuai dengan filter.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
-
-/* ===================== LAPORAN TAB ===================== */
 function LaporanTab({ isOwner }: { isOwner: boolean }) {
   const [reports, setReports] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
