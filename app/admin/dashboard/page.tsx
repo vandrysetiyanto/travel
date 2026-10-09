@@ -2360,6 +2360,247 @@ function StockLedgerTab() {
 }
 
 
+
+/* ===================== JURNAL UMUM TAB ===================== */
+function GeneralJournalTab() {
+  const [journals, setJournals] = useState<any[]>([]);
+  const [coaList, setCoaList] = useState<any[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ journal_date: new Date().toISOString().split('T')[0], debit_coa_id: '', credit_coa_id: '', amount: '', description: '' });
+
+  const loadData = () => {
+    fetch('/api/admin/financial?period=ALL').then(r => r.json()).then(d => {
+      if (d.success) {
+        setJournals(d.generalJournals || []);
+        setCoaList(d.coaList || []);
+      }
+    });
+  };
+
+  useEffect(() => { loadData(); }, []);
+
+  const saveJournal = () => {
+    if (!form.debit_coa_id || !form.credit_coa_id || !form.amount) {
+      alert('Semua field wajib diisi!');
+      return;
+    }
+    fetch('/api/admin/financial', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'CREATE_GENERAL_JOURNAL', ...form })
+    }).then(r => r.json()).then(d => {
+      if (d.success) {
+        alert('Jurnal umum berhasil disimpan!');
+        setShowModal(false);
+        setForm({ journal_date: new Date().toISOString().split('T')[0], debit_coa_id: '', credit_coa_id: '', amount: '', description: '' });
+        loadData();
+      } else {
+        alert(d.message || 'Gagal menyimpan jurnal');
+      }
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div>
+          <h3 className="text-base font-black text-slate-900">Jurnal Umum (Memorial)</h3>
+          <p className="text-xs text-slate-500">Pencatatan transaksi akuntansi berpasangan (Double-Entry).</p>
+        </div>
+        <button onClick={() => setShowModal(true)} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition">+ Buat Jurnal Baru</button>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
+              <th className="p-3">Tanggal</th>
+              <th className="p-3">Debit (Akun)</th>
+              <th className="p-3">Kredit (Akun)</th>
+              <th className="p-3 text-right">Jumlah (Rp)</th>
+              <th className="p-3">Keterangan</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {journals.map((j:any)=>(
+              <tr key={j.id} className="hover:bg-slate-50 transition">
+                <td className="p-3 font-mono text-slate-500">{j.journal_date}</td>
+                <td className="p-3 font-bold text-slate-900">{j.debit_code} - {j.debit_name}</td>
+                <td className="p-3 font-bold text-slate-900">{j.credit_code} - {j.credit_name}</td>
+                <td className="p-3 text-right font-mono font-bold text-emerald-600">{fmtRp(j.amount)}</td>
+                <td className="p-3 text-slate-600">{j.description}</td>
+              </tr>
+            ))}
+            {journals.length === 0 && (
+              <tr><td colSpan={5} className="text-center py-8 text-slate-400">Belum ada jurnal umum.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="text-base font-black text-slate-900">Form Jurnal Umum (Memorial)</h3>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Tanggal *</label>
+                <input type="date" value={form.journal_date} onChange={e=>setForm({...form, journal_date:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Akun Debit *</label>
+                <select value={form.debit_coa_id} onChange={e=>setForm({...form, debit_coa_id:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
+                  <option value="">-- Pilih Akun Debit --</option>
+                  {coaList.map((c:any)=>(<option key={c.id} value={c.id}>[{c.coa_code}] {c.coa_name}</option>))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Akun Kredit *</label>
+                <select value={form.credit_coa_id} onChange={e=>setForm({...form, credit_coa_id:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
+                  <option value="">-- Pilih Akun Kredit --</option>
+                  {coaList.map((c:any)=>(<option key={c.id} value={c.id}>[{c.coa_code}] {c.coa_name}</option>))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Jumlah (Rp) *</label>
+                <input type="number" inputMode="numeric" value={form.amount} onChange={e=>setForm({...form, amount:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs font-mono" placeholder="0" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Keterangan / Deskripsi</label>
+                <input value={form.description} onChange={e=>setForm({...form, description:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" placeholder="Keterangan transaksi..." />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <button onClick={() => setShowModal(false)} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
+              <button onClick={saveJournal} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Simpan Jurnal</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+/* ===================== BEBAN OPERASIONAL TAB ===================== */
+function ExpensesTab() {
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [coaList, setCoaList] = useState<any[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ expense_date: new Date().toISOString().split('T')[0], coa_account_id: '', amount: '', description: '' });
+
+  const loadData = () => {
+    fetch('/api/admin/financial?period=ALL').then(r => r.json()).then(d => {
+      if (d.success) {
+        setExpenses(d.expensesList || []);
+        setCoaList(d.coaList || []);
+      }
+    });
+  };
+
+  useEffect(() => { loadData(); }, []);
+
+  const saveExpense = () => {
+    if (!form.coa_account_id || !form.amount) {
+      alert('Akun Beban dan Jumlah wajib diisi!');
+      return;
+    }
+    fetch('/api/admin/financial', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'CREATE_EXPENSE', ...form })
+    }).then(r => r.json()).then(d => {
+      if (d.success) {
+        alert('Beban operasional berhasil dicatat!');
+        setShowModal(false);
+        setForm({ expense_date: new Date().toISOString().split('T')[0], coa_account_id: '', amount: '', description: '' });
+        loadData();
+      } else {
+        alert(d.message || 'Gagal mencatat beban');
+      }
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div>
+          <h3 className="text-base font-black text-slate-900">Beban Operasional (Expenses)</h3>
+          <p className="text-xs text-slate-500">Pencatatan pengeluaran dan biaya operasional travel.</p>
+        </div>
+        <button onClick={() => setShowModal(true)} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition">+ Catat Beban Baru</button>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
+              <th className="p-3">Tanggal</th>
+              <th className="p-3">Akun Beban</th>
+              <th className="p-3 text-right">Jumlah (Rp)</th>
+              <th className="p-3">Keterangan</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {expenses.map((e:any)=>(
+              <tr key={e.id} className="hover:bg-slate-50 transition">
+                <td className="p-3 font-mono text-slate-500">{e.expense_date}</td>
+                <td className="p-3 font-bold text-slate-900">{e.coa_code} - {e.coa_name}</td>
+                <td className="p-3 text-right font-mono font-bold text-rose-600">{fmtRp(e.amount)}</td>
+                <td className="p-3 text-slate-600">{e.description}</td>
+              </tr>
+            ))}
+            {expenses.length === 0 && (
+              <tr><td colSpan={4} className="text-center py-8 text-slate-400">Belum ada data beban operasional.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="text-base font-black text-slate-900">Catat Beban Operasional Baru</h3>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Tanggal *</label>
+                <input type="date" value={form.expense_date} onChange={e=>setForm({...form, expense_date:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Pilih Akun Beban (COA) *</label>
+                <select value={form.coa_account_id} onChange={e=>setForm({...form, coa_account_id:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
+                  <option value="">-- Pilih Akun Beban --</option>
+                  {coaList.map((c:any)=>(<option key={c.id} value={c.id}>[{c.coa_code}] {c.coa_name}</option>))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Jumlah (Rp) *</label>
+                <input type="number" inputMode="numeric" value={form.amount} onChange={e=>setForm({...form, amount:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs font-mono" placeholder="0" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Keterangan / Keperluan</label>
+                <input value={form.description} onChange={e=>setForm({...form, description:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" placeholder="Contoh: Pembayaran listrik kantor..." />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <button onClick={() => setShowModal(false)} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
+              <button onClick={saveExpense} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Simpan Beban</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 export default function AdminDashboard() {
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -2652,6 +2893,8 @@ export default function AdminDashboard() {
           {activeTab === 'arus-kas' && <ArusKasTab />}
             {activeTab === 'ledger' && <LedgerTab />}
             {activeTab === 'stock-ledger' && <StockLedgerTab />}
+          {activeTab === 'general-journal' && <GeneralJournalTab />}
+          {activeTab === 'expenses' && <ExpensesTab />}
         </div>
       </main>
       <ToastContainer toast={toast} onClose={() => setToast(null)} />
