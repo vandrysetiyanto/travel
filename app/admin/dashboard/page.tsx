@@ -427,113 +427,198 @@ function MasterPaket() {
     if(!form.name||!form.price) return alert('Nama dan harga wajib diisi');
     const action = pkgMode === 'edit' ? 'UPDATE_PACKAGE' : 'CREATE_PACKAGE';
     const res = await fetch('/api/admin/packages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form, action})});
-    const d = await res.json(); (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, d.success ? 'success' : 'error') : alert(d.message); if(d.success){setPkgMode('idle');setForm({});load();}
+    const d = await res.json(); 
+    if(d.success){
+      alert('Paket berhasil disimpan');
+      setPkgMode('idle');
+      setForm({});
+      load();
+    } else {
+      alert(d.message || 'Gagal menyimpan paket');
+    }
   };
+
   const saveBatch = async () => {
     if(!batchForm.package_id||!batchForm.batch_name||!batchForm.departure_date||!batchForm.return_date) return alert('Paket, nama batch, dan tanggal wajib diisi');
     const action = batchMode === 'edit' ? 'UPDATE_BATCH' : 'CREATE_BATCH';
     const res = await fetch('/api/admin/packages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...batchForm, action})});
-    const d = await res.json(); (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, d.success ? 'success' : 'error') : alert(d.message); if(d.success){setBatchMode('idle');setBatchForm({});load();}
+    const d = await res.json(); 
+    if(d.success){
+      alert('Batch berhasil disimpan');
+      setBatchMode('idle');
+      setBatchForm({});
+      load();
+    } else {
+      alert(d.message || 'Gagal menyimpan batch');
+    }
   };
+
   const deleteBatch = async (id: number) => {
     if(!confirm('Hapus batch ini?')) return;
     const res = await fetch('/api/admin/packages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'DELETE_BATCH', id})});
-    const d = await res.json(); (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, d.success ? 'success' : 'error') : alert(d.message); if(d.success) load();
+    const d = await res.json(); 
+    if(d.success) load(); 
+    else alert(d.message);
   };
+
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end gap-2">
-        <button onClick={()=>{setBatchForm({});setBatchMode('add');}} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm">+ Tambah Batch</button>
-        <button onClick={()=>{setForm({});setPkgMode('add');}} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm">+ Tambah Paket</button>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div>
+          <h3 className="text-base font-black text-slate-900">Paket Perjalanan & Batch Keberangkatan</h3>
+          <p className="text-xs text-slate-500">Manajemen program paket umroh/haji dan musim keberangkatan.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={()=>{setBatchForm({});setBatchMode('add');}} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition">+ Tambah Batch</button>
+          <button onClick={()=>{setForm({});setPkgMode('add');}} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-emerald-700 transition">+ Tambah Paket</button>
+        </div>
       </div>
+
+      {/* Modal Paket */}
       {pkgMode !== 'idle' && (
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="font-bold text-gray-800 mb-4">{pkgMode==='edit'?'Edit Paket':'Tambah Paket & Batch'}</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <FInput label="Nama Paket" field="name" form={form} setForm={setForm}/><FInput label="Kategori" field="category" form={form} setForm={setForm}/>
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <label className="block text-xs font-medium text-gray-600">Harga (Rp)</label>
-                <span className="text-[11px] font-bold text-emerald-600">{form.price ? fmtRp(Number(form.price)) : ''}</span>
-              </div>
-              <input type="number" inputMode="numeric" pattern="[0-9]*" value={form.price||''} onChange={e=>setForm({...form,price:e.target.value})} placeholder="Contoh: 35000000" className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="text-base font-black text-slate-900">{pkgMode==='edit'?'Edit Paket Perjalanan':'Tambah Paket Perjalanan Baru'}</h3>
+              <button onClick={()=>setPkgMode('idle')} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
             </div>
-            <FInput label="Durasi (hari)" field="duration_days" type="number" form={form} setForm={setForm}/>
-            <FInput label="Hotel Makkah" field="hotel_makkah" form={form} setForm={setForm}/><FInput label="Hotel Madinah" field="hotel_madinah" form={form} setForm={setForm}/>
-            <FInput label="Maskapai" field="airline" form={form} setForm={setForm}/><FInput label="Kota Berangkat" field="departure_city" form={form} setForm={setForm}/>
-            {pkgMode==='add' && <><FInput label="Tgl Berangkat" field="departure_date" type="date" form={form} setForm={setForm}/><FInput label="Tgl Pulang" field="return_date" type="date" form={form} setForm={setForm}/>
-            <FInput label="Kuota" field="quota" type="number" form={form} setForm={setForm}/></>}
-            <div className="md:col-span-3"><label className="block text-xs font-medium text-gray-600 mb-1">Deskripsi</label>
-            <textarea value={form.description||''} onChange={e=>setForm({...form,description:e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2}/></div>
-          </div>
-          <div className="mt-4 flex gap-2">
-            <button onClick={save} className="bg-emerald-600 text-white px-6 py-2 rounded-lg text-sm">Simpan</button>
-            <button onClick={()=>setPkgMode('idle')} className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg text-sm">Batal</button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <FInput label="Nama Paket *" field="name" form={form} setForm={setForm} placeholder="Contoh: Umroh Reguler 9 Hari"/>
+              <FInput label="Kategori" field="category" form={form} setForm={setForm} placeholder="Reguler / VIP"/>
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Harga (Rp) *</label>
+                  <span className="text-[11px] font-bold text-emerald-600">{form.price ? fmtRp(Number(form.price)) : ''}</span>
+                </div>
+                <input type="number" inputMode="numeric" pattern="[0-9]*" value={form.price||''} onChange={e=>setForm({...form,price:e.target.value})} placeholder="35000000" className="w-full border rounded-xl px-3 py-2 text-xs font-mono" />
+              </div>
+              <FInput label="Durasi (Hari)" field="duration_days" type="number" form={form} setForm={setForm} placeholder="9"/>
+              <FInput label="Hotel Makkah" field="hotel_makkah" form={form} setForm={setForm} placeholder="Pullman Zamzam"/>
+              <FInput label="Hotel Madinah" field="hotel_madinah" form={form} setForm={setForm} placeholder="Front Pekan"/>
+              <FInput label="Maskapai" field="airline" form={form} setForm={setForm} placeholder="Saudia Airlines"/>
+              <FInput label="Kota Berangkat" field="departure_city" form={form} setForm={setForm} placeholder="Jakarta"/>
+              {pkgMode==='add' && <>
+                <FInput label="Tgl Berangkat" field="departure_date" type="date" form={form} setForm={setForm}/>
+                <FInput label="Tgl Pulang" field="return_date" type="date" form={form} setForm={setForm}/>
+                <FInput label="Kuota" field="quota" type="number" form={form} setForm={setForm} placeholder="45"/>
+              </>}
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Deskripsi & Fasilitas</label>
+                <textarea value={form.description||''} onChange={e=>setForm({...form,description:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" rows={3} placeholder="Fasilitas termasuk tiket pesawat, visa, bus AC, dll..."/>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <button onClick={()=>setPkgMode('idle')} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
+              <button onClick={save} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Simpan Paket</button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Modal Batch */}
       {batchMode !== 'idle' && (
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="font-bold text-gray-800 mb-4">{batchMode==='edit'?'Edit Batch':'Tambah Batch Keberangkatan'}</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div><label className="block text-xs font-medium text-gray-600 mb-1">Paket</label>
-            <select value={batchForm.package_id||''} onChange={e=>setBatchForm({...batchForm,package_id:e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
-              <option value="">Pilih Paket</option>
-              {packages.map((p:any)=>(<option key={p.id} value={p.id}>{p.name}</option>))}
-            </select></div>
-            <FInput label="Nama Batch" field="batch_name" form={batchForm} setForm={setBatchForm}/>
-            <div><label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
-            <select value={batchForm.status||'OPEN'} onChange={e=>setBatchForm({...batchForm,status:e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
-              <option value="OPEN">Open</option><option value="FULL">Full</option><option value="CLOSED">Closed</option>
-            </select></div>
-            <FInput label="Tgl Berangkat" field="departure_date" type="date" form={batchForm} setForm={setBatchForm}/><FInput label="Tgl Pulang" field="return_date" type="date" form={batchForm} setForm={setBatchForm}/>
-            <FInput label="Kuota" field="quota" type="number" form={batchForm} setForm={setBatchForm}/>
-          </div>
-          <div className="mt-4 flex gap-2">
-            <button onClick={saveBatch} className="bg-emerald-600 text-white px-6 py-2 rounded-lg text-sm">Simpan</button>
-            <button onClick={()=>setBatchMode('idle')} className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg text-sm">Batal</button>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="text-base font-black text-slate-900">{batchMode==='edit'?'Edit Batch Keberangkatan':'Tambah Batch Keberangkatan Baru'}</h3>
+              <button onClick={()=>setBatchMode('idle')} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Pilih Paket *</label>
+                <select value={batchForm.package_id||''} onChange={e=>setBatchForm({...batchForm, package_id:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
+                  <option value="">-- Pilih Paket Perjalanan --</option>
+                  {packages.map((p:any)=>(<option key={p.id} value={p.id}>{p.name} ({fmtRp(p.price)})</option>))}
+                </select>
+              </div>
+              <FInput label="Nama Batch / Musim *" field="batch_name" form={batchForm} setForm={setBatchForm} placeholder="Batch 1 - Oktober"/>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Status Batch</label>
+                <select value={batchForm.status||'OPEN'} onChange={e=>setBatchForm({...batchForm,status:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
+                  <option value="OPEN">Open</option><option value="FULL">Full</option><option value="CLOSED">Closed</option>
+                </select>
+              </div>
+              <FInput label="Tanggal Berangkat *" field="departure_date" type="date" form={batchForm} setForm={setBatchForm}/>
+              <FInput label="Tanggal Pulang *" field="return_date" type="date" form={batchForm} setForm={setBatchForm}/>
+              <FInput label="Kuota Kursi *" field="quota" type="number" form={batchForm} setForm={setBatchForm} placeholder="45"/>
+            </div>
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <button onClick={()=>setBatchMode('idle')} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
+              <button onClick={saveBatch} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Simpan Batch</button>
+            </div>
           </div>
         </div>
       )}
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="bg-gray-50 text-left">
-            <th className="p-3">Paket</th><th className="p-3">Kategori</th><th className="p-3">Harga</th><th className="p-3">Durasi</th>
-            <th className="p-3">Hotel</th><th className="p-3">Maskapai</th><th className="p-3">Aksi</th>
-          </tr></thead>
-          <tbody>
-            {packages.map((p:any)=>(<tr key={p.id} className="border-b hover:bg-gray-50">
-              <td className="p-3 font-medium">{p.name}</td><td className="p-3">{p.category}</td>
-              <td className="p-3">{fmtRp(p.price)}</td><td className="p-3">{p.duration_days} hari</td>
-              <td className="p-3 text-xs">{p.hotel_makkah} / {p.hotel_madinah}</td><td className="p-3">{p.airline}</td>
-              <td className="p-3"><button onClick={()=>{setForm(p);setPkgMode('edit');}} className="text-blue-600 hover:underline text-xs">Edit</button></td>
-            </tr>))}
+
+      {/* Tabel Paket */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
+        <h4 className="text-sm font-black text-slate-900 mb-4">Daftar Paket Program</h4>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
+              <th className="p-3">Nama Paket</th>
+              <th className="p-3">Kategori</th>
+              <th className="p-3">Harga</th>
+              <th className="p-3">Durasi</th>
+              <th className="p-3">Hotel (Makkah / Madinah)</th>
+              <th className="p-3">Maskapai</th>
+              <th className="p-3 text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {packages.map((p:any)=>(
+              <tr key={p.id} className="hover:bg-slate-50 transition">
+                <td className="p-3 font-bold text-slate-900">{p.name}</td>
+                <td className="p-3 text-slate-600">{p.category}</td>
+                <td className="p-3 font-mono font-bold text-emerald-600">{fmtRp(p.price)}</td>
+                <td className="p-3 text-slate-600">{p.duration_days} hari</td>
+                <td className="p-3 text-slate-600">{p.hotel_makkah} / {p.hotel_madinah}</td>
+                <td className="p-3 text-slate-600">{p.airline}</td>
+                <td className="p-3 text-right">
+                  <button onClick={()=>{setForm(p);setPkgMode('edit');}} className="text-indigo-600 hover:underline font-bold">Edit</button>
+                </td>
+              </tr>
+            ))}
           </tbody>
-        </table></div>
+        </table>
       </div>
-      <div className="bg-white rounded-xl shadow p-6">
-        <h3 className="font-bold text-gray-800 mb-4">Batch Keberangkatan</h3>
-        <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="bg-gray-50 text-left">
-            <th className="p-3">Batch</th><th className="p-3">Paket</th><th className="p-3">Berangkat</th><th className="p-3">Pulang</th><th className="p-3">Kuota</th><th className="p-3">Status</th><th className="p-3">Aksi</th>
-          </tr></thead>
-          <tbody>
-            {batches.map((b:any)=>(<tr key={b.id} className="border-b hover:bg-gray-50">
-              <td className="p-3 font-medium">{b.batch_name}</td><td className="p-3 text-xs">{b.package_name}</td>
-              <td className="p-3">{b.departure_date}</td><td className="p-3">{b.return_date}</td>
-              <td className="p-3">{b.quota}</td><td className="p-3"><StatusBadge s={b.status}/></td>
-              <td className="p-3 space-x-2">
-                <button onClick={()=>{setBatchForm(b);setBatchMode('edit');}} className="text-blue-600 hover:underline text-xs">Edit</button>
-                <button onClick={()=>deleteBatch(b.id)} className="text-red-600 hover:underline text-xs">Hapus</button>
-              </td>
-            </tr>))}
+
+      {/* Tabel Batch */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
+        <h4 className="text-sm font-black text-slate-900 mb-4">Daftar Batch Keberangkatan</h4>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
+              <th className="p-3">Nama Batch</th>
+              <th className="p-3">Paket</th>
+              <th className="p-3">Berangkat</th>
+              <th className="p-3">Pulang</th>
+              <th className="p-3 text-center">Kuota</th>
+              <th className="p-3">Status</th>
+              <th className="p-3 text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {batches.map((b:any)=>(
+              <tr key={b.id} className="hover:bg-slate-50 transition">
+                <td className="p-3 font-bold text-slate-900">{b.batch_name}</td>
+                <td className="p-3 text-slate-600">{b.package_name}</td>
+                <td className="p-3 font-mono text-slate-600">{b.departure_date}</td>
+                <td className="p-3 font-mono text-slate-600">{b.return_date}</td>
+                <td className="p-3 text-center font-mono font-bold text-slate-900">{b.quota}</td>
+                <td className="p-3"><StatusBadge s={b.status}/></td>
+                <td className="p-3 text-right space-x-2">
+                  <button onClick={()=>{setBatchForm(b);setBatchMode('edit');}} className="text-indigo-600 hover:underline font-bold">Edit</button>
+                  <button onClick={()=>deleteBatch(b.id)} className="text-rose-600 hover:underline font-bold">Hapus</button>
+                </td>
+              </tr>
+            ))}
           </tbody>
-        </table></div>
+        </table>
       </div>
     </div>
   );
 }
-
 
 /* --- Master Inventaris --- */
 function MasterInventaris() {
