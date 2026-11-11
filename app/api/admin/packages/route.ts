@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
+import { requirePermission, catatAudit } from '@/lib/permissions';
 
 initDB();
 
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request);
+  const auth = await requirePermission(request, 'paket.read');
   if (!auth.ok) return auth.response;
 
   try {
@@ -33,6 +34,7 @@ export async function POST(req: Request) {
 
     // 1. Tambah Paket Baru
     if (action === 'CREATE_PACKAGE' || !action) {
+      { const cek = await requirePermission(req, 'paket.create'); if (!cek.ok) return cek.response; }
       const { name, category, description, duration_days, price, hotel_makkah, hotel_madinah, airline, departure_city, departure_date, return_date, quota } = body;
 
       if (!name || !price) {
@@ -76,6 +78,7 @@ export async function POST(req: Request) {
 
     // 2. Update Paket
     if (action === 'UPDATE_PACKAGE') {
+      { const cek = await requirePermission(req, 'paket.update'); if (!cek.ok) return cek.response; }
       const { id, name, category, description, duration_days, price, hotel_makkah, hotel_madinah, airline, departure_city, is_active } = body;
       db.prepare(`
         UPDATE packages SET
@@ -93,6 +96,7 @@ export async function POST(req: Request) {
 
     // 3. Tambah Batch Baru
     if (action === 'CREATE_BATCH') {
+      { const cek = await requirePermission(req, 'paket.create'); if (!cek.ok) return cek.response; }
       const { package_id, batch_name, departure_date, return_date, quota, status } = body;
       if (!package_id || !batch_name || !departure_date || !return_date) {
         return NextResponse.json({ success: false, message: 'Paket, nama batch, dan tanggal wajib diisi' }, { status: 400 });
@@ -106,6 +110,7 @@ export async function POST(req: Request) {
 
     // 4. Update Batch
     if (action === 'UPDATE_BATCH') {
+      { const cek = await requirePermission(req, 'paket.update'); if (!cek.ok) return cek.response; }
       const { id, package_id, batch_name, departure_date, return_date, quota, status } = body;
       db.prepare(`
         UPDATE batches SET
@@ -117,6 +122,7 @@ export async function POST(req: Request) {
 
     // 5. Delete Batch — hanya bila belum dipakai booking.
     if (action === 'DELETE_BATCH') {
+      { const cek = await requirePermission(req, 'paket.delete'); if (!cek.ok) return cek.response; }
       const { id } = body;
       if (!id) {
         return NextResponse.json({ success: false, message: 'ID batch wajib dikirim' }, { status: 400 });
@@ -142,6 +148,7 @@ export async function POST(req: Request) {
       }
 
       db.prepare('DELETE FROM batches WHERE id = ?').run(id);
+      catatAudit({ user: auth.user, action: 'DELETE', module: 'batch', recordId: id });
       return NextResponse.json({ success: true, message: 'Batch berhasil dihapus' });
     }
 

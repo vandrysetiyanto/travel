@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
+import { requirePermission } from '@/lib/permissions';
 
 initDB();
 
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request);
+  const auth = await requirePermission(request, 'inventory.read');
   if (!auth.ok) return auth.response;
 
   try {
@@ -35,6 +36,7 @@ export async function POST(req: Request) {
     const { action } = body;
 
     if (action === 'ADD_ITEM') {
+      { const cek = await requirePermission(req, 'inventory.create'); if (!cek.ok) return cek.response; }
       const { code, name, category, stock_total, unit, description } = body;
       if (!code || !name) {
         return NextResponse.json({ success: false, message: 'Kode dan nama barang wajib diisi' }, { status: 400 });
@@ -47,12 +49,14 @@ export async function POST(req: Request) {
     }
 
     if (action === 'UPDATE_STOCK') {
+      { const cek = await requirePermission(req, 'inventory.update'); if (!cek.ok) return cek.response; }
       const { item_id, stock_total } = body;
       db.prepare('UPDATE inventory_items SET stock_total = ? WHERE id = ?').run(Number(stock_total), item_id);
       return NextResponse.json({ success: true, message: 'Stok berhasil diperbarui' });
     }
 
     if (action === 'HANDOVER') {
+      { const cek = await requirePermission(req, 'inventory.update'); if (!cek.ok) return cek.response; }
       const { transaction_id, item_id, qty, notes } = body;
       if (!transaction_id || !item_id) {
         return NextResponse.json({ success: false, message: 'Transaksi dan Barang wajib dipilih' }, { status: 400 });

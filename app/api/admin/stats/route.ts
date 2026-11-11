@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
+import { requirePermission } from '@/lib/permissions';
 
 initDB();
 
@@ -9,7 +10,7 @@ initDB();
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request);
+  const auth = await requirePermission(request, 'report.finance');
   if (!auth.ok) return auth.response;
 
   try {

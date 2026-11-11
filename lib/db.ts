@@ -234,6 +234,15 @@ export function initDB() {
 
 );
 
+  // ── RBAC: tabel role/izin + sinkronisasi (idempoten, aman tiap boot) ──
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { sinkronRBAC } = require('@/lib/rbac-sync');
+    sinkronRBAC();
+  } catch (e) {
+    console.error('[initDB] sinkronRBAC gagal:', (e as Error).message);
+  }
+
   // Migrasi kolom untuk database yang sudah berjalan (aman diulang).
   ensureColumn('master_jamaah', 'group_code', 'group_code TEXT');
   ensureColumn('transactions', 'total_pilgrims', 'total_pilgrims INTEGER NOT NULL DEFAULT 1');

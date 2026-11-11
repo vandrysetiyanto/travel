@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
+import { requirePermission, catatAudit } from '@/lib/permissions';
 
 initDB();
 
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request);
+  const auth = await requirePermission(request, 'jamaah.read');
   if (!auth.ok) return auth.response;
 
   try {
@@ -49,6 +50,7 @@ export async function POST(request: Request) {
      * checklist-nya ikut dibersihkan karena hanya milik jamaah tersebut.
      */
     if (String(body.action || '').toUpperCase() === 'DELETE_JAMAAH') {
+      { const cek = await requirePermission(request, 'jamaah.delete'); if (!cek.ok) return cek.response; }
       const id = Number(body.id);
       if (!id) {
         return NextResponse.json({ success: false, message: 'ID jamaah wajib dikirim' }, { status: 400 });
@@ -73,8 +75,11 @@ export async function POST(request: Request) {
       });
       hapus();
 
+      catatAudit({ user: auth.user, action: 'DELETE', module: 'jamaah', recordId: target.id });
       return NextResponse.json({ success: true, message: `Jamaah "${target.full_name}" berhasil dihapus` });
     }
+
+    { const cek = await requirePermission(request, 'jamaah.create'); if (!cek.ok) return cek.response; }
 
     const {
       nik, no_kk, full_name, gender, birth_place, birth_date,

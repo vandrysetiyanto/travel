@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
+import { requirePermission } from '@/lib/permissions';
 
 initDB();
 
 /** Manifest keberangkatan: satu baris per JEMAAH (leader + anggota group_code),
  *  bukan per booking, supaya daftar manifest benar-benar berisi semua jemaah. */
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request);
+  const auth = await requirePermission(request, 'report.operational');
   if (!auth.ok) return auth.response;
 
   try {

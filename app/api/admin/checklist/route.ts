@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
+import { requirePermission } from '@/lib/permissions';
 
 initDB();
 
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request);
+  const auth = await requirePermission(request, 'checklist.read');
   if (!auth.ok) return auth.response;
 
   try {
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
     const { action } = body;
 
     if (action === 'UPDATE_STATUS') {
+      { const cek = await requirePermission(request, 'checklist.update'); if (!cek.ok) return cek.response; }
       const { jamaah_id, checklist_master_id, status, notes } = body;
       if (!jamaah_id || !checklist_master_id || !status) {
         return NextResponse.json({ success: false, message: 'Data tidak lengkap' }, { status: 400 });
@@ -77,6 +79,7 @@ export async function POST(request: Request) {
     }
 
     if (action === 'SAVE_MASTER') {
+      { const cek = await requirePermission(request, 'checklist.update'); if (!cek.ok) return cek.response; }
       const { id, category, item_code, item_name, is_inventory_linked, inventory_item_id, is_mandatory } = body;
       if (!category || !item_code || !item_name) {
         return NextResponse.json({ success: false, message: 'Kategori, kode, dan nama item wajib diisi' }, { status: 400 });
@@ -98,6 +101,7 @@ export async function POST(request: Request) {
     }
 
     if (action === 'DELETE_MASTER') {
+      { const cek = await requirePermission(request, 'checklist.update'); if (!cek.ok) return cek.response; }
       const { id } = body;
       db.prepare('DELETE FROM checklist_master WHERE id = ?').run(id);
       return NextResponse.json({ success: true, message: 'Master checklist dihapus' });

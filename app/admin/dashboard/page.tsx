@@ -2835,6 +2835,7 @@ export default function AdminDashboard() {
     'Operasional & Jamaah': true,
   });
   const [user, setUser] = useState<any>(null);
+  const [perms, setPerms] = useState<string[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -2845,54 +2846,63 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!user) return;
     fetch('/api/admin/staff/me')
-      .then((r) => {
+      .then(async (r) => {
         if (r.status === 401) {
           localStorage.removeItem('admin_user');
           window.location.href = '/admin/login';
+          return;
+        }
+        // Sumber kebenaran akses = permissions[] dari server, bukan nama role.
+        const d = await r.json().catch(() => null);
+        if (d?.success) {
+          setPerms(Array.isArray(d.permissions) ? d.permissions : []);
+          if (d.user) setUser((u: any) => ({ ...u, ...d.user }));
         }
       })
       .catch(() => {});
-  }, [user]);
+  }, [user?.id]);
 
   const isOwner = user?.role === 'OWNER';
+  /** Cek izin; selama daftar belum termuat, tombol disembunyikan (aman secara default). */
+  const has = (code: string) => perms.includes(code);
 
-      const menuGroups: { groupName: string; items: { id: Tab; icon: React.ReactNode; label: string }[] }[] = [
+      const menuGroups: { groupName: string; items: { id: Tab; icon: React.ReactNode; label: string; perm?: string }[] }[] = [
     {
       groupName: 'Master Data',
       items: [
-        { id: 'jamaah', icon: <Users className="w-4 h-4" />, label: 'Data Jamaah' },
-        { id: 'paket', icon: <Package className="w-4 h-4" />, label: 'Paket Perjalanan' },
-        { id: 'batches', icon: <Plane className="w-4 h-4" />, label: 'Jadwal & Batch' },
-        { id: 'inventory', icon: <Boxes className="w-4 h-4" />, label: 'Inventaris & Stok' },
-        { id: 'master-coa' as Tab, icon: <Calculator className="w-4 h-4" />, label: 'Master Akun COA' },
+        { id: 'jamaah', perm: 'jamaah.read', icon: <Users className="w-4 h-4" />, label: 'Data Jamaah' },
+        { id: 'paket', perm: 'paket.read', icon: <Package className="w-4 h-4" />, label: 'Paket Perjalanan' },
+        { id: 'batches', perm: 'paket.read', icon: <Plane className="w-4 h-4" />, label: 'Jadwal & Batch' },
+        { id: 'inventory', perm: 'inventory.read', icon: <Boxes className="w-4 h-4" />, label: 'Inventaris & Stok' },
+        { id: 'master-coa' as Tab, perm: 'coa.manage', icon: <Calculator className="w-4 h-4" />, label: 'Master Akun COA' },
       ],
     },
     {
       groupName: 'Transaksi & Akuntansi',
       items: [
-        { id: 'transaksi', icon: <ShoppingBag className="w-4 h-4" />, label: 'Transaksi & Booking' },
-        { id: 'pembayaran', icon: <Receipt className="w-4 h-4" />, label: 'Verifikasi Pembayaran' },
-        { id: 'general-journal' as Tab, icon: <BookOpen className="w-4 h-4" />, label: 'Jurnal Umum (Memorial)' },
-        { id: 'expenses' as Tab, icon: <CreditCard className="w-4 h-4" />, label: 'Beban Operasional' },
+        { id: 'transaksi', perm: 'booking.read', icon: <ShoppingBag className="w-4 h-4" />, label: 'Transaksi & Booking' },
+        { id: 'pembayaran', perm: 'payment.read', icon: <Receipt className="w-4 h-4" />, label: 'Verifikasi Pembayaran' },
+        { id: 'general-journal' as Tab, perm: 'journal.read', icon: <BookOpen className="w-4 h-4" />, label: 'Jurnal Umum (Memorial)' },
+        { id: 'expenses' as Tab, perm: 'expense.manage', icon: <CreditCard className="w-4 h-4" />, label: 'Beban Operasional' },
       ],
     },
     {
       groupName: 'Operasional & Jamaah',
       items: [
-        { id: 'manifest', icon: <Plane className="w-4 h-4" />, label: 'Manifest Keberangkatan' },
-        { id: 'registrations', icon: <ClipboardList className="w-4 h-4" />, label: 'Registrasi Online' },
-        { id: 'checklist' as Tab, icon: <CheckSquare className="w-4 h-4" />, label: 'Checklist Kelengkapan' },
+        { id: 'manifest', perm: 'report.operational', icon: <Plane className="w-4 h-4" />, label: 'Manifest Keberangkatan' },
+        { id: 'registrations', perm: 'booking.read', icon: <ClipboardList className="w-4 h-4" />, label: 'Registrasi Online' },
+        { id: 'checklist' as Tab, perm: 'checklist.read', icon: <CheckSquare className="w-4 h-4" />, label: 'Checklist Kelengkapan' },
       ],
     },
     {
       groupName: 'Laporan & Keuangan',
       items: [
-        { id: 'laporan', icon: <TrendingUp className="w-4 h-4" />, label: 'Laporan Keuangan' },
-        { id: 'laba-rugi', icon: <FileText className="w-4 h-4" />, label: 'Laporan Laba Rugi' },
-        { id: 'neraca', icon: <Calculator className="w-4 h-4" />, label: 'Laporan Neraca' },
-        { id: 'arus-kas', icon: <Wallet className="w-4 h-4" />, label: 'Laporan Arus Kas' },
-        { id: 'ledger' as Tab, icon: <FileSpreadsheet className="w-4 h-4" />, label: 'Jurnal Buku Besar' },
-        { id: 'stock-ledger' as Tab, icon: <Boxes className="w-4 h-4" />, label: 'Mutasi Stok Gudang' },
+        { id: 'laporan', perm: 'report.finance', icon: <TrendingUp className="w-4 h-4" />, label: 'Laporan Keuangan' },
+        { id: 'laba-rugi', perm: 'report.finance', icon: <FileText className="w-4 h-4" />, label: 'Laporan Laba Rugi' },
+        { id: 'neraca', perm: 'report.finance', icon: <Calculator className="w-4 h-4" />, label: 'Laporan Neraca' },
+        { id: 'arus-kas', perm: 'report.finance', icon: <Wallet className="w-4 h-4" />, label: 'Laporan Arus Kas' },
+        { id: 'ledger' as Tab, perm: 'journal.read', icon: <FileSpreadsheet className="w-4 h-4" />, label: 'Jurnal Buku Besar' },
+        { id: 'stock-ledger' as Tab, perm: 'inventory.read', icon: <Boxes className="w-4 h-4" />, label: 'Mutasi Stok Gudang' },
       ],
     },
     ...(isOwner
@@ -2900,16 +2910,21 @@ export default function AdminDashboard() {
           {
             groupName: 'Pengaturan & Akses',
             items: [
-              { id: 'settings' as Tab, icon: <Building2 className="w-4 h-4" />, label: 'Profil Tour & Travel' },
-              { id: 'staf' as Tab, icon: <ShieldCheck className="w-4 h-4" />, label: 'Kelola Staf' },
+              { id: 'settings' as Tab, perm: 'settings.manage', icon: <Building2 className="w-4 h-4" />, label: 'Profil Tour & Travel' },
+              { id: 'staf' as Tab, perm: 'staff.manage', icon: <ShieldCheck className="w-4 h-4" />, label: 'Kelola Staf' },
             ],
           },
         ]
       : []),
   ];
+  // Buang menu yang tidak diizinkan; grup kosong tidak ditampilkan.
+  const menuTerlihat = menuGroups
+    .map(g => ({ ...g, items: g.items.filter((it: any) => !it.perm || has(it.perm)) }))
+    .filter(g => g.items.length > 0);
+
   const allItems = [
     { id: 'dashboard' as Tab, icon: <LayoutDashboard className="w-4 h-4" />, label: 'Dashboard Overview' },
-    ...menuGroups.flatMap(g => g.items),
+    ...menuTerlihat.flatMap(g => g.items),
   ];
 
   const currentTabInfo = allItems.find(m => m.id === activeTab) || allItems[0];
@@ -3076,7 +3091,7 @@ export default function AdminDashboard() {
 
         {/* Scrollable View Content */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          {activeTab === 'dashboard' && <DashboardTab isOwner={isOwner} />}
+          {activeTab === 'dashboard' && <DashboardTab isOwner={has('report.finance')} />}
           {activeTab === 'jamaah' && <MasterJamaah />}
         {activeTab === 'checklist' && <ChecklistTab />}
           {activeTab === 'paket' && <MasterPaket />}
@@ -3084,13 +3099,13 @@ export default function AdminDashboard() {
           {activeTab === 'inventory' && <MasterInventaris />}
           {activeTab === 'transaksi' && <TransaksiTab />}
           {activeTab === 'manifest' && <ManifestTab />}
-          {activeTab === 'staf' && isOwner && <KelolaStaf />}
-          {activeTab === 'settings' && isOwner && <PengaturanTab />}
+          {activeTab === 'staf' && has('staff.manage') && <KelolaStaf />}
+          {activeTab === 'settings' && has('settings.manage') && <PengaturanTab />}
           {activeTab === 'pembayaran' && <PembayaranTab />}
           {activeTab === 'registrations' && <RegistrationsTab />}
-          {activeTab === 'laporan' && <LaporanTab isOwner={isOwner} />}
+          {activeTab === 'laporan' && <LaporanTab isOwner={has('report.finance')} />}
           {activeTab === 'master-coa' && <MasterCOATab />}
-          {activeTab === 'laba-rugi' && <LabaRugiTab isOwner={isOwner} />}
+          {activeTab === 'laba-rugi' && <LabaRugiTab isOwner={has('report.finance')} />}
           {activeTab === 'neraca' && <NeracaTab />}
           {activeTab === 'arus-kas' && <ArusKasTab />}
             {activeTab === 'ledger' && <LedgerTab />}

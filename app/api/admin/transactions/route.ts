@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
+import { requirePermission } from '@/lib/permissions';
 
 initDB();
 
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request);
+  const auth = await requirePermission(request, 'booking.read');
   if (!auth.ok) return auth.response;
 
   try {
@@ -77,6 +78,7 @@ export async function POST(request: Request) {
 
     // Action 1: Create New Booking
     if (action === 'CREATE_BOOKING') {
+      { const cek = await requirePermission(request, 'booking.create'); if (!cek.ok) return cek.response; }
       const { jamaah_id, batch_id, initial_payment, payment_type, notes } = body;
 
       const batch = db.prepare(`
@@ -119,6 +121,7 @@ export async function POST(request: Request) {
 
     // Action 2: Add Installment Payment / Pelunasan
     if (action === 'ADD_PAYMENT') {
+      { const cek = await requirePermission(request, 'booking.update'); if (!cek.ok) return cek.response; }
       const { transaction_id, amount, payment_type, bank_name, notes } = body;
       const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(transaction_id) as any;
       if (!tx) {

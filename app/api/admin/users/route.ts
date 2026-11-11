@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import db, { initDB } from '@/lib/db';
 import { requireOwner } from '@/lib/auth';
+import { requirePermission, catatAudit } from '@/lib/permissions';
 
 initDB();
 
@@ -18,7 +19,7 @@ function normalisasiRole(v: unknown): string {
 
 /** Daftar staf — hanya OWNER. */
 export async function GET(req: Request) {
-  const auth = await requireOwner(req);
+  const auth = await requirePermission(req, 'staff.manage');
   if (!auth.ok) return auth.response;
 
   try {
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
     const { action } = body;
 
     if (action === 'CREATE_USER') {
+      { const cek = await requirePermission(req, 'staff.manage'); if (!cek.ok) return cek.response; }
       const { name, email, password, role } = body;
       if (!name || !email || !password) {
         return NextResponse.json({ success: false, message: 'Nama, email, dan password wajib diisi' }, { status: 400 });
@@ -57,10 +59,12 @@ export async function POST(req: Request) {
         bcrypt.hashSync(String(password), 10),
         normalisasiRole(role)
       );
+      catatAudit({ user: auth.user, action: 'CREATE', module: 'user', notes: cleanEmail });
       return NextResponse.json({ success: true, message: 'User berhasil dibuat' });
     }
 
     if (action === 'UPDATE_USER') {
+      { const cek = await requirePermission(req, 'staff.manage'); if (!cek.ok) return cek.response; }
       const { id, name, email, password, role } = body;
       if (!id) return NextResponse.json({ success: false, message: 'ID user wajib dikirim' }, { status: 400 });
       if (!name || !email) return NextResponse.json({ success: false, message: 'Nama dan email wajib diisi' }, { status: 400 });
@@ -98,10 +102,12 @@ export async function POST(req: Request) {
       } else {
         db.prepare('UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?').run(name, cleanEmail, roleBaru, id);
       }
+      catatAudit({ user: auth.user, action: 'UPDATE', module: 'user', recordId: id });
       return NextResponse.json({ success: true, message: 'User berhasil diperbarui' });
     }
 
     if (action === 'DELETE_USER') {
+      { const cek = await requirePermission(req, 'staff.manage'); if (!cek.ok) return cek.response; }
       const { id } = body;
       const count = db.prepare(`SELECT COUNT(*) as c FROM users WHERE role = 'OWNER'`).get() as any;
       const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as any;
@@ -112,6 +118,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, message: 'Tidak dapat menghapus akun Anda sendiri' }, { status: 400 });
       }
       db.prepare('DELETE FROM users WHERE id = ?').run(id);
+      catatAudit({ user: auth.user, action: 'DELETE', module: 'user', recordId: id });
       return NextResponse.json({ success: true, message: 'User berhasil dihapus' });
     }
 

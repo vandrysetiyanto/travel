@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin, requireOwner } from '@/lib/auth';
+import { requirePermission } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const auth = await requireAdmin(req);
+  const auth = await requirePermission(req, 'settings.manage');
   if (!auth.ok) return auth.response;
 
   try {
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireOwner(req);
+  const auth = await requirePermission(req, 'settings.manage');
   if (!auth.ok) return auth.response;
 
   try {

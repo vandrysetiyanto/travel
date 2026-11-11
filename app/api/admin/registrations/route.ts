@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
+import { requirePermission } from '@/lib/permissions';
 import { pilgrimCountOf } from '@/lib/booking';
 
 initDB();
 
 /** Daftar booking (skema baru: `transactions` + anggota lewat group_code). */
 export async function GET(req: Request) {
-  const auth = await requireAdmin(req);
+  const auth = await requirePermission(req, 'booking.read');
   if (!auth.ok) return auth.response;
 
   try {

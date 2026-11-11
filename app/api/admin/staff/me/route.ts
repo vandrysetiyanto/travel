@@ -2,11 +2,18 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
+import { permissionsOf, roleDikenal } from '@/lib/permissions';
 import { SESSION_COOKIE, sessionCookieOptions, createSessionToken } from '@/lib/auth';
 
 initDB();
 
-/** Profil staf yang sedang login (juga dipakai dashboard untuk memastikan akun masih ada). */
+/**
+ * Profil staf yang sedang login (juga dipakai dashboard untuk memastikan akun masih ada).
+ *
+ * Sejak RBAC, respons ini juga membawa `permissions[]` — daftar izin efektif milik
+ * role pengguna. Dashboard merender menu & tombol dari daftar itu, bukan dari nama
+ * role, supaya izin bisa diubah di satu tempat (role_permissions) tanpa menyentuh UI.
+ */
 export async function GET(req: Request) {
   const auth = await requireAdmin(req);
   if (!auth.ok) return auth.response;
@@ -22,7 +29,13 @@ export async function GET(req: Request) {
       return res;
     }
 
-    return NextResponse.json({ success: true, user });
+    const role = String(user.role || '').toUpperCase();
+    return NextResponse.json({
+      success: true,
+      user,
+      roleDikenal: roleDikenal(role),
+      permissions: permissionsOf(role),
+    });
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
@@ -70,6 +83,7 @@ export async function POST(req: Request) {
       success: true,
       message: 'Profil berhasil diperbarui. Gunakan email baru untuk login berikutnya.',
       user: { id: uid, name, email, role: current.role },
+      permissions: permissionsOf(String(current.role || '')),
     });
     res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions);
     return res;

@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
+import { requirePermission, catatAudit } from '@/lib/permissions';
 
 initDB();
 
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request);
+  const auth = await requirePermission(request, 'journal.read');
   if (!auth.ok) return auth.response;
 
   try {
@@ -159,11 +160,13 @@ export async function POST(request: Request) {
     const { action } = body;
 
     if (action === 'GET_COA') {
+      { const cek = await requirePermission(request, 'journal.read'); if (!cek.ok) return cek.response; }
       const coa = db.prepare('SELECT * FROM chart_of_accounts ORDER BY coa_code ASC').all();
       return NextResponse.json({ success: true, coa });
     }
 
     if (action === 'SAVE_COA') {
+      { const cek = await requirePermission(request, 'coa.manage'); if (!cek.ok) return cek.response; }
       const { id, coa_code, coa_name, coa_type, coa_group } = body;
       if (!coa_code || !coa_name) {
         return NextResponse.json({ success: false, message: 'Kode dan Nama Akun wajib diisi' }, { status: 400 });
@@ -184,6 +187,7 @@ export async function POST(request: Request) {
     }
 
     if (action === 'DELETE_COA') {
+      { const cek = await requirePermission(request, 'coa.manage'); if (!cek.ok) return cek.response; }
       const { id } = body;
       if (!id) return NextResponse.json({ success: false, message: 'ID akun wajib dikirim' }, { status: 400 });
 
@@ -210,10 +214,12 @@ export async function POST(request: Request) {
       }
 
       db.prepare('DELETE FROM chart_of_accounts WHERE id = ?').run(id);
+      catatAudit({ user: auth.user, action: 'DELETE', module: 'coa', recordId: id });
       return NextResponse.json({ success: true, message: 'Akun COA dihapus' });
     }
 
     if (action === 'GET_EXPENSES') {
+      { const cek = await requirePermission(request, 'journal.read'); if (!cek.ok) return cek.response; }
       const expenses = db.prepare(`
         SELECT e.*, coa.coa_code, coa.coa_name
         FROM expenses e
@@ -224,6 +230,7 @@ export async function POST(request: Request) {
     }
 
     if (action === 'ADD_EXPENSE') {
+      { const cek = await requirePermission(request, 'expense.manage'); if (!cek.ok) return cek.response; }
       const { coa_account_id, amount, description, expense_date } = body;
       if (!coa_account_id || !amount) {
         return NextResponse.json({ success: false, message: 'Akun dan jumlah beban wajib diisi' }, { status: 400 });
@@ -243,6 +250,7 @@ export async function POST(request: Request) {
     }
 
     if (action === 'DELETE_EXPENSE') {
+      { const cek = await requirePermission(request, 'expense.manage'); if (!cek.ok) return cek.response; }
       const { id } = body;
       if (!id) return NextResponse.json({ success: false, message: 'ID beban wajib dikirim' }, { status: 400 });
 
@@ -260,10 +268,12 @@ export async function POST(request: Request) {
       });
       hapus();
 
+      catatAudit({ user: auth.user, action: 'DELETE', module: 'expense', recordId: id });
       return NextResponse.json({ success: true, message: 'Catatan beban & baris buku besarnya dihapus' });
     }
 
     if (action === 'GET_JOURNALS') {
+      { const cek = await requirePermission(request, 'journal.read'); if (!cek.ok) return cek.response; }
       const journals = db.prepare(`
         SELECT j.*, 
                d.coa_code as debit_code, d.coa_name as debit_name,
@@ -277,6 +287,7 @@ export async function POST(request: Request) {
     }
 
     if (action === 'ADD_JOURNAL') {
+      { const cek = await requirePermission(request, 'journal.create'); if (!cek.ok) return cek.response; }
       const { journal_date, reference_no, description, debit_coa_id, credit_coa_id, amount } = body;
       if (!journal_date || !debit_coa_id || !credit_coa_id || !amount) {
         return NextResponse.json({ success: false, message: 'Semua field wajib diisi (Tanggal, Akun Debit, Akun Kredit, Jumlah)' }, { status: 400 });
@@ -302,6 +313,7 @@ export async function POST(request: Request) {
     }
 
     if (action === 'DELETE_JOURNAL') {
+      { const cek = await requirePermission(request, 'journal.delete'); if (!cek.ok) return cek.response; }
       const { id } = body;
       if (!id) return NextResponse.json({ success: false, message: 'ID jurnal wajib dikirim' }, { status: 400 });
 
@@ -328,10 +340,12 @@ export async function POST(request: Request) {
       });
       hapus();
 
+      catatAudit({ user: auth.user, action: 'DELETE', module: 'journal', recordId: id });
       return NextResponse.json({ success: true, message: 'Jurnal umum & pasangan buku besarnya dihapus' });
     }
 
     if (action === 'GET_LEDGER') {
+      { const cek = await requirePermission(request, 'journal.read'); if (!cek.ok) return cek.response; }
       const ledger = db.prepare(`
         SELECT l.*, coa.coa_code, coa.coa_name
         FROM ledger l
