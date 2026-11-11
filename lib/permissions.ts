@@ -131,22 +131,25 @@ export function roleDikenal(role: string): boolean {
 /** Daftar izin efektif sebuah role. */
 export function permissionsOf(role: string): string[] {
   const kode = String(role || '').trim().toUpperCase();
+
+  /*
+   * Role yang tidak terdaftar / tanpa izin = TIDAK PUNYA IZIN (kosong).
+   *
+   * Sebelumnya fungsi ini jatuh ke izin VIEWER, sehingga salah konfigurasi
+   * (role baru belum dicentang, salah ketik kode role, atau role yang baru
+   * dihapus) justru memberi akses baca — termasuk data jamaah, booking, dan
+   * pembayaran — tanpa pernah muncul sebagai error. Akses harus diperoleh
+   * karena sengaja diberikan, bukan karena kebetulan tidak dikenal.
+   */
+  if (!kode) return [];
+
   const rows = db
     .prepare(`SELECT p.code FROM role_permissions rp
               JOIN permissions p ON p.id = rp.permission_id
               JOIN roles r ON r.id = rp.role_id
               WHERE r.code = ?`)
     .all(kode) as { code: string }[];
-  if (rows.length) return rows.map((r) => r.code);
-
-  // Role tidak dikenal: jangan pernah jatuh ke "semua izin".
-  const fallback = db
-    .prepare(`SELECT p.code FROM role_permissions rp
-              JOIN permissions p ON p.id = rp.permission_id
-              JOIN roles r ON r.id = rp.role_id
-              WHERE r.code = 'VIEWER'`)
-    .all() as { code: string }[];
-  return fallback.map((r) => r.code);
+  return rows.map((r) => r.code);
 }
 
 /** Cek cepat untuk dipakai di dalam route yang sudah punya sesi. */
