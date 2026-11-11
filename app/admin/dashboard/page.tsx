@@ -1618,14 +1618,19 @@ function KelolaStaf() {
   );
 }
 
-/* ===================== KELOLA IZIN ROLE ===================== */
+/* ===================== MASTER ROLE (MENU + IZIN) ===================== */
 function KelolaIzinRole() {
   const [roles, setRoles] = useState<any[]>([]);
   const [perms, setPerms] = useState<any[]>([]);
   const [matriks, setMatriks] = useState<Record<string, string[]>>({});
+  const [menuTambahan, setMenuTambahan] = useState<Record<string, string[]>>({});
+  const [katalog, setKatalog] = useState<any[]>([]);
+  const [sensitif, setSensitif] = useState<string[]>([]);
   const [userPerRole, setUserPerRole] = useState<Record<string, number>>({});
   const [aktif, setAktif] = useState<string>('');
   const [draft, setDraft] = useState<string[]>([]);
+  const [draftMenu, setDraftMenu] = useState<string[]>([]);
+  const [tab, setTab] = useState<'menu' | 'izin'>('menu');
   const [loading, setLoading] = useState(false);
   const [simpan, setSimpan] = useState<'idle'|'saving'>('idle');
 
@@ -1636,9 +1641,16 @@ function KelolaIzinRole() {
         setRoles(d.roles || []);
         setPerms(d.permissions || []);
         setMatriks(d.matriks || {});
+        setMenuTambahan(d.menuTambahan || {});
+        setKatalog(d.katalog || []);
+        setSensitif(d.sensitif || []);
         setUserPerRole(d.userPerRole || {});
         const r0 = (d.roles || [])[0];
-        if (r0 && !aktif) { setAktif(r0.code); setDraft(d.matriks?.[r0.code] || []); }
+        if (r0 && !aktif) {
+          setAktif(r0.code);
+          setDraft(d.matriks?.[r0.code] || []);
+          setDraftMenu(d.menuTambahan?.[r0.code] || []);
+        }
       }
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -1648,12 +1660,15 @@ function KelolaIzinRole() {
   const pilihRole = (code: string) => {
     setAktif(code);
     setDraft(matriks[code] || []);
+    setDraftMenu(menuTambahan[code] || []);
   };
 
   const toggle = (code: string) => {
     setDraft(prev => prev.includes(code) ? prev.filter(x => x !== code) : [...prev, code]);
   };
-
+  const toggleMenu = (code: string) => {
+    setDraftMenu(prev => prev.includes(code) ? prev.filter(x => x !== code) : [...prev, code]);
+  };
   const toggleModul = (modul: string, nyala: boolean) => {
     const kodeModul = perms.filter(p => p.module === modul).map(p => p.code);
     setDraft(prev => nyala
@@ -1677,17 +1692,41 @@ function KelolaIzinRole() {
     }
   };
 
+  const simpanMenu = async () => {
+    setSimpan('saving');
+    const res = await fetch('/api/admin/roles', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'SET_MENUS', role: aktif, menus: draftMenu }),
+    });
+    const d = await res.json();
+    setSimpan('idle');
+    if (d.success) {
+      setMenuTambahan(prev => ({ ...prev, [aktif]: d.menus || draftMenu }));
+      (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, 'success') : alert(d.message);
+    } else {
+      (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, 'error') : alert(d.message);
+    }
+  };
+
   const roleAktif = roles.find(r => r.code === aktif);
   const modulUnik = Array.from(new Set(perms.map(p => p.module)));
-  const berubah = JSON.stringify((matriks[aktif] || []).slice().sort()) !== JSON.stringify(draft.slice().sort());
+  const izinRole = matriks[aktif] || [];
+  const berubahIzin = JSON.stringify(izinRole.slice().sort()) !== JSON.stringify(draft.slice().sort());
+  const berubahMenu = JSON.stringify((menuTambahan[aktif] || []).slice().sort()) !== JSON.stringify(draftMenu.slice().sort());
   const kunciOwner = aktif === 'OWNER';
+  const grupMenu = Array.from(new Set(katalog.map((m: any) => m.group)));
+
+  /** otomatis = menu muncul karena izin dasarnya sudah dimiliki role ini */
+  const otomatis = (m: any) => !!(m.perm && izinRole.includes(m.perm));
 
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs">
-        <h3 className="text-base font-black text-slate-900">Izin per Role</h3>
+        <h3 className="text-base font-black text-slate-900">Master Role</h3>
         <p className="text-xs text-slate-500 mt-1">
-          Centang tindakan yang boleh dilakukan setiap role. Perubahan berlaku seketika untuk semua pengguna dengan role tersebut.
+          Satu pengguna memegang satu role. Untuk setiap role, tentukan <b>menu apa yang tampil</b> dan
+          <b> tindakan apa yang boleh dilakukan</b>. Menu bisa ditambah di luar izin dasar
+          (mis. role Keuangan tetap diberi menu Kasir), tetapi menu pengaturan/akses tidak bisa dibuka lewat pengecualian.
         </p>
       </div>
 
@@ -1695,84 +1734,136 @@ function KelolaIzinRole() {
         <div className="bg-white rounded-2xl border border-slate-200/80 p-8 text-center text-slate-400 text-sm">Memuat…</div>
       ) : (
         <div className="grid lg:grid-cols-[260px_1fr] gap-4">
-          {/* daftar role */}
           <div className="bg-white rounded-2xl border border-slate-200/80 p-2 shadow-xs h-fit">
             {roles.map(r => {
-              const jml = (matriks[r.code] || []).length;
+              const jmlIzin = (matriks[r.code] || []).length;
+              const jmlMenu = (menuTambahan[r.code] || []).length;
               const pilih = aktif === r.code;
               return (
                 <button key={r.code} onClick={() => pilihRole(r.code)}
                   className={`w-full text-left px-3 py-2.5 rounded-xl mb-1 transition ${pilih ? 'bg-slate-900 text-white' : 'hover:bg-slate-50'}`}>
                   <div className="flex items-center justify-between gap-2">
                     <span className={`text-xs font-bold ${pilih ? 'text-white' : 'text-slate-900'}`}>{r.code}</span>
-                    <span className={`text-[10px] font-mono ${pilih ? 'text-slate-300' : 'text-slate-500'}`}>{jml}/{perms.length}</span>
+                    <span className={`text-[10px] font-mono ${pilih ? 'text-slate-300' : 'text-slate-500'}`}>{jmlIzin}/{perms.length}</span>
                   </div>
                   <div className={`text-[10px] truncate ${pilih ? 'text-slate-300' : 'text-slate-500'}`}>
-                    {r.name} · {userPerRole[r.code] || 0} user
+                    {r.name} · {userPerRole[r.code] || 0} user{jmlMenu ? ` · +${jmlMenu} menu` : ''}
                   </div>
                 </button>
               );
             })}
           </div>
 
-          {/* matriks centang */}
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-100">
               <div>
                 <p className="text-sm font-black text-slate-900">{aktif || '-'}</p>
                 <p className="text-[11px] text-slate-500">
-                  {roleAktif?.name || ''} · {userPerRole[aktif] || 0} pengguna · {draft.length}/{perms.length} izin
+                  {roleAktif?.name || ''} · {userPerRole[aktif] || 0} pengguna · {izinRole.length}/{perms.length} izin · {draftMenu.length} menu tambahan
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                {berubah && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">Belum disimpan</span>}
-                <button onClick={() => setDraft(matriks[aktif] || [])} disabled={!berubah || kunciOwner}
-                  className="px-3 py-2 text-xs font-bold text-slate-600 rounded-xl hover:bg-slate-100 disabled:opacity-40">Reset</button>
-                <button onClick={simpanIzin} disabled={!berubah || kunciOwner || simpan === 'saving'}
+                {((tab === 'izin' && berubahIzin) || (tab === 'menu' && berubahMenu)) && (
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">Belum disimpan</span>
+                )}
+                <button onClick={() => { setDraft(izinRole); setDraftMenu(menuTambahan[aktif] || []); }}
+                  className="px-3 py-2 text-xs font-bold text-slate-600 rounded-xl hover:bg-slate-100">Reset</button>
+                <button
+                  onClick={tab === 'izin' ? simpanIzin : simpanMenu}
+                  disabled={(tab === 'izin' ? (!berubahIzin || kunciOwner) : !berubahMenu) || simpan === 'saving'}
                   className="px-4 py-2 text-xs font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-40">
-                  {simpan === 'saving' ? 'Menyimpan…' : 'Simpan Izin'}
+                  {simpan === 'saving' ? 'Menyimpan…' : (tab === 'izin' ? 'Simpan Izin' : 'Simpan Menu')}
                 </button>
               </div>
             </div>
 
-            {kunciOwner && (
-              <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 text-[11px] text-slate-600">
-                Role OWNER selalu memegang seluruh izin dan tidak dapat diubah — ini pengaman agar selalu ada yang bisa mengelola sistem.
+            <div className="flex gap-1 px-4 pt-3">
+              {(['menu', 'izin'] as const).map(t => (
+                <button key={t} onClick={() => setTab(t)}
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition ${tab === t ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                  {t === 'menu' ? 'Menu yang Tampil' : 'Izin / Tindakan'}
+                </button>
+              ))}
+            </div>
+
+            {kunciOwner && tab === 'izin' && (
+              <div className="px-4 py-2.5 mt-3 bg-slate-50 border-y border-slate-100 text-[11px] text-slate-600">
+                Role OWNER selalu memegang seluruh izin — pengaman agar selalu ada yang bisa mengelola sistem.
               </div>
             )}
 
-            <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
-              {modulUnik.map(modul => {
-                const baris = perms.filter(p => p.module === modul);
-                const semuaNyala = baris.every(p => draft.includes(p.code));
-                return (
-                  <div key={modul} className="border border-slate-100 rounded-xl">
-                    <label className="flex items-center justify-between gap-3 px-3 py-2 bg-slate-50/70 rounded-t-xl cursor-pointer">
-                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-600">{modul}</span>
-                      <span className="flex items-center gap-2 text-[10px] text-slate-500">
-                        {baris.filter(p => draft.includes(p.code)).length}/{baris.length}
-                        <input type="checkbox" checked={semuaNyala} disabled={kunciOwner}
-                          onChange={e => toggleModul(modul, e.target.checked)}
-                          className="w-3.5 h-3.5 accent-slate-900" />
-                      </span>
-                    </label>
-                    <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 p-3">
-                      {baris.map(p => (
-                        <label key={p.code} className="flex items-start gap-2 py-1 cursor-pointer group">
-                          <input type="checkbox" checked={draft.includes(p.code)} disabled={kunciOwner}
-                            onChange={() => toggle(p.code)}
-                            className="mt-0.5 w-3.5 h-3.5 accent-slate-900" />
-                          <span className="min-w-0">
-                            <span className="block text-xs text-slate-800 group-hover:text-slate-950">{p.label}</span>
-                            <span className="block text-[10px] font-mono text-slate-400">{p.code}</span>
-                          </span>
-                        </label>
-                      ))}
+            {tab === 'menu' ? (
+              <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+                {grupMenu.map(g => {
+                  const baris = katalog.filter((m: any) => m.group === g);
+                  return (
+                    <div key={g} className="border border-slate-100 rounded-xl">
+                      <div className="px-3 py-2 bg-slate-50/70 rounded-t-xl">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-600">{g}</span>
+                      </div>
+                      <div className="p-3 space-y-1">
+                        {baris.map((m: any) => {
+                          const auto = otomatis(m);
+                          const khusus = draftMenu.includes(m.code);
+                          const sensitifMenu = sensitif.includes(m.code);
+                          const aktifkan = auto || khusus;
+                          return (
+                            <label key={m.code} className={`flex items-start gap-2 py-1 ${sensitifMenu ? 'opacity-60' : 'cursor-pointer'}`}>
+                              <input type="checkbox" checked={aktifkan}
+                                disabled={auto || sensitifMenu}
+                                onChange={() => toggleMenu(m.code)}
+                                className="mt-0.5 w-3.5 h-3.5 accent-slate-900" />
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-xs text-slate-800">{m.label}</span>
+                                <span className="block text-[10px] font-mono text-slate-400">
+                                  {m.code}
+                                  {auto && m.perm ? ` · otomatis dari izin ${m.perm}` : ''}
+                                  {!auto && khusus ? ' · ditambahkan manual' : ''}
+                                  {sensitifMenu ? ' · hanya lewat izin' : ''}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+                {modulUnik.map(modul => {
+                  const baris = perms.filter(p => p.module === modul);
+                  const semuaNyala = baris.every(p => draft.includes(p.code));
+                  return (
+                    <div key={modul} className="border border-slate-100 rounded-xl">
+                      <label className="flex items-center justify-between gap-3 px-3 py-2 bg-slate-50/70 rounded-t-xl cursor-pointer">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-600">{modul}</span>
+                        <span className="flex items-center gap-2 text-[10px] text-slate-500">
+                          {baris.filter(p => draft.includes(p.code)).length}/{baris.length}
+                          <input type="checkbox" checked={semuaNyala} disabled={kunciOwner}
+                            onChange={e => toggleModul(modul, e.target.checked)}
+                            className="w-3.5 h-3.5 accent-slate-900" />
+                        </span>
+                      </label>
+                      <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 p-3">
+                        {baris.map(p => (
+                          <label key={p.code} className="flex items-start gap-2 py-1 cursor-pointer group">
+                            <input type="checkbox" checked={draft.includes(p.code)} disabled={kunciOwner}
+                              onChange={() => toggle(p.code)}
+                              className="mt-0.5 w-3.5 h-3.5 accent-slate-900" />
+                            <span className="min-w-0">
+                              <span className="block text-xs text-slate-800 group-hover:text-slate-950">{p.label}</span>
+                              <span className="block text-[10px] font-mono text-slate-400">{p.code}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -3089,6 +3180,8 @@ export default function AdminDashboard() {
   });
   const [user, setUser] = useState<any>(null);
   const [perms, setPerms] = useState<string[]>([]);
+  // Daftar menu yang boleh tampil, diputuskan server (izin + pengecualian per role).
+  const [menuAktif, setMenuAktif] = useState<string[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -3109,6 +3202,7 @@ export default function AdminDashboard() {
         const d = await r.json().catch(() => null);
         if (d?.success) {
           setPerms(Array.isArray(d.permissions) ? d.permissions : []);
+          setMenuAktif(Array.isArray(d.menu) ? d.menu : []);
           if (d.user) setUser((u: any) => ({ ...u, ...d.user }));
         }
       })
@@ -3165,20 +3259,25 @@ export default function AdminDashboard() {
             items: [
               { id: 'settings' as Tab, perm: 'settings.manage', icon: <Building2 className="w-4 h-4" />, label: 'Profil Tour & Travel' },
               { id: 'staf' as Tab, perm: 'staff.manage', icon: <ShieldCheck className="w-4 h-4" />, label: 'Kelola Staf' },
-              { id: 'roles' as Tab, perm: 'staff.manage', icon: <KeyRound className="w-4 h-4" />, label: 'Izin per Role' },
+              { id: 'roles' as Tab, perm: 'staff.manage', icon: <KeyRound className="w-4 h-4" />, label: 'Master Role' },
               { id: 'audit' as Tab, perm: 'audit.read', icon: <History className="w-4 h-4" />, label: 'Log Aktivitas' },
             ],
           },
         ]
       : []),
   ];
-  // Buang menu yang tidak diizinkan; grup kosong tidak ditampilkan.
+  /*
+   * Menu ditentukan SERVER (izin + pengecualian menu per role), bukan dihitung
+   * ulang di klien. Dengan begitu role bisa diberi menu di luar izin dasarnya
+   * (mis. FINANCE diberi menu Kasir) tanpa memberi izin tambahan.
+   * Selama daftar belum termuat: hanya Dashboard yang tampil (aman).
+   */
   const menuTerlihat = menuGroups
-    .map(g => ({ ...g, items: g.items.filter((it: any) => !it.perm || has(it.perm)) }))
+    .map(g => ({ ...g, items: g.items.filter((it: any) => it.alwaysOn || menuAktif.includes(String(it.id))) }))
     .filter(g => g.items.length > 0);
 
   const allItems = [
-    { id: 'dashboard' as Tab, icon: <LayoutDashboard className="w-4 h-4" />, label: 'Dashboard Overview' },
+    { id: 'dashboard' as Tab, alwaysOn: true, icon: <LayoutDashboard className="w-4 h-4" />, label: 'Dashboard Overview' },
     ...menuTerlihat.flatMap(g => g.items),
   ];
 

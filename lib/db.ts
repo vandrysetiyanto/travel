@@ -265,6 +265,17 @@ export function initDB() {
   ensureColumn('payment_history', 'ledger_id', 'ledger_id INTEGER');
   // Barang bisa diserahkan ke orang tertentu, bukan hanya ke booking.
   ensureColumn('inventory_handover', 'jamaah_id', 'jamaah_id INTEGER');
+
+  // Menu yang boleh dibuka per role TANPA izin dasarnya (pengecualian pemilik).
+  // Contoh: role FINANCE tetap diberi akses menu Kasir walau bukan admin kasir.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS role_menus (
+      role_id INTEGER NOT NULL,
+      menu_code TEXT NOT NULL,
+      PRIMARY KEY (role_id, menu_code),
+      FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
+    );
+  `);
   ensureIndex('idx_handover_jamaah', 'CREATE INDEX IF NOT EXISTS idx_handover_jamaah ON inventory_handover(jamaah_id)');
   ensureColumn('payment_history', 'verified_by', 'verified_by TEXT');
   ensureIndex('idx_ledger_journal', 'CREATE INDEX IF NOT EXISTS idx_ledger_journal ON ledger(journal_id)');
