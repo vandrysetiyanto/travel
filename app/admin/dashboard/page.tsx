@@ -38,18 +38,13 @@ function ToastContainer({ toast, onClose }: { toast: { msg: string; type: 'succe
   );
 }
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { CheckSquare,
-  FileText, Calculator, Wallet,
-  LayoutDashboard, Users, Package, Boxes, ShoppingBag, Receipt,
-  TrendingUp, Plane, ClipboardList, Building2, ShieldCheck, LogOut,
-  Menu, X, CheckCircle2, Clock, AlertCircle, RefreshCw, BookOpen, CreditCard, FileSpreadsheet
-} from 'lucide-react';
+import { CheckSquare, FileText, Calculator, Wallet, LayoutDashboard, Users, Package, Boxes, ShoppingBag, Receipt, TrendingUp, Plane, ClipboardList, Building2, ShieldCheck, LogOut, Menu, X, CheckCircle2, Clock, AlertCircle, RefreshCw, BookOpen, CreditCard, FileSpreadsheet, KeyRound, History } from 'lucide-react';
 
 
 const fmt = (n: number) => new Intl.NumberFormat('id-ID').format(n);
 const fmtRp = (n: number) => 'Rp ' + fmt(n);
 
-type Tab = 'dashboard' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'settings';
+type Tab = 'dashboard' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings';
 type MasterSub = 'jamaah' | 'paket' | 'inventaris';
 
 /* ===================== DASHBOARD TAB ===================== */
@@ -1623,6 +1618,264 @@ function KelolaStaf() {
   );
 }
 
+/* ===================== KELOLA IZIN ROLE ===================== */
+function KelolaIzinRole() {
+  const [roles, setRoles] = useState<any[]>([]);
+  const [perms, setPerms] = useState<any[]>([]);
+  const [matriks, setMatriks] = useState<Record<string, string[]>>({});
+  const [userPerRole, setUserPerRole] = useState<Record<string, number>>({});
+  const [aktif, setAktif] = useState<string>('');
+  const [draft, setDraft] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [simpan, setSimpan] = useState<'idle'|'saving'>('idle');
+
+  const load = () => {
+    setLoading(true);
+    fetch('/api/admin/roles').then(r => r.json()).then(d => {
+      if (d.success) {
+        setRoles(d.roles || []);
+        setPerms(d.permissions || []);
+        setMatriks(d.matriks || {});
+        setUserPerRole(d.userPerRole || {});
+        const r0 = (d.roles || [])[0];
+        if (r0 && !aktif) { setAktif(r0.code); setDraft(d.matriks?.[r0.code] || []); }
+      }
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+
+  const pilihRole = (code: string) => {
+    setAktif(code);
+    setDraft(matriks[code] || []);
+  };
+
+  const toggle = (code: string) => {
+    setDraft(prev => prev.includes(code) ? prev.filter(x => x !== code) : [...prev, code]);
+  };
+
+  const toggleModul = (modul: string, nyala: boolean) => {
+    const kodeModul = perms.filter(p => p.module === modul).map(p => p.code);
+    setDraft(prev => nyala
+      ? Array.from(new Set([...prev, ...kodeModul]))
+      : prev.filter(x => !kodeModul.includes(x)));
+  };
+
+  const simpanIzin = async () => {
+    setSimpan('saving');
+    const res = await fetch('/api/admin/roles', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'SET_PERMISSIONS', role: aktif, permissions: draft }),
+    });
+    const d = await res.json();
+    setSimpan('idle');
+    if (d.success) {
+      setMatriks(prev => ({ ...prev, [aktif]: d.permissions || draft }));
+      (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, 'success') : alert(d.message);
+    } else {
+      (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, 'error') : alert(d.message);
+    }
+  };
+
+  const roleAktif = roles.find(r => r.code === aktif);
+  const modulUnik = Array.from(new Set(perms.map(p => p.module)));
+  const berubah = JSON.stringify((matriks[aktif] || []).slice().sort()) !== JSON.stringify(draft.slice().sort());
+  const kunciOwner = aktif === 'OWNER';
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs">
+        <h3 className="text-base font-black text-slate-900">Izin per Role</h3>
+        <p className="text-xs text-slate-500 mt-1">
+          Centang tindakan yang boleh dilakukan setiap role. Perubahan berlaku seketika untuk semua pengguna dengan role tersebut.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-8 text-center text-slate-400 text-sm">Memuat…</div>
+      ) : (
+        <div className="grid lg:grid-cols-[260px_1fr] gap-4">
+          {/* daftar role */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-2 shadow-xs h-fit">
+            {roles.map(r => {
+              const jml = (matriks[r.code] || []).length;
+              const pilih = aktif === r.code;
+              return (
+                <button key={r.code} onClick={() => pilihRole(r.code)}
+                  className={`w-full text-left px-3 py-2.5 rounded-xl mb-1 transition ${pilih ? 'bg-slate-900 text-white' : 'hover:bg-slate-50'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-xs font-bold ${pilih ? 'text-white' : 'text-slate-900'}`}>{r.code}</span>
+                    <span className={`text-[10px] font-mono ${pilih ? 'text-slate-300' : 'text-slate-500'}`}>{jml}/{perms.length}</span>
+                  </div>
+                  <div className={`text-[10px] truncate ${pilih ? 'text-slate-300' : 'text-slate-500'}`}>
+                    {r.name} · {userPerRole[r.code] || 0} user
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* matriks centang */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-100">
+              <div>
+                <p className="text-sm font-black text-slate-900">{aktif || '-'}</p>
+                <p className="text-[11px] text-slate-500">
+                  {roleAktif?.name || ''} · {userPerRole[aktif] || 0} pengguna · {draft.length}/{perms.length} izin
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {berubah && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">Belum disimpan</span>}
+                <button onClick={() => setDraft(matriks[aktif] || [])} disabled={!berubah || kunciOwner}
+                  className="px-3 py-2 text-xs font-bold text-slate-600 rounded-xl hover:bg-slate-100 disabled:opacity-40">Reset</button>
+                <button onClick={simpanIzin} disabled={!berubah || kunciOwner || simpan === 'saving'}
+                  className="px-4 py-2 text-xs font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-40">
+                  {simpan === 'saving' ? 'Menyimpan…' : 'Simpan Izin'}
+                </button>
+              </div>
+            </div>
+
+            {kunciOwner && (
+              <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 text-[11px] text-slate-600">
+                Role OWNER selalu memegang seluruh izin dan tidak dapat diubah — ini pengaman agar selalu ada yang bisa mengelola sistem.
+              </div>
+            )}
+
+            <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+              {modulUnik.map(modul => {
+                const baris = perms.filter(p => p.module === modul);
+                const semuaNyala = baris.every(p => draft.includes(p.code));
+                return (
+                  <div key={modul} className="border border-slate-100 rounded-xl">
+                    <label className="flex items-center justify-between gap-3 px-3 py-2 bg-slate-50/70 rounded-t-xl cursor-pointer">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-600">{modul}</span>
+                      <span className="flex items-center gap-2 text-[10px] text-slate-500">
+                        {baris.filter(p => draft.includes(p.code)).length}/{baris.length}
+                        <input type="checkbox" checked={semuaNyala} disabled={kunciOwner}
+                          onChange={e => toggleModul(modul, e.target.checked)}
+                          className="w-3.5 h-3.5 accent-slate-900" />
+                      </span>
+                    </label>
+                    <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 p-3">
+                      {baris.map(p => (
+                        <label key={p.code} className="flex items-start gap-2 py-1 cursor-pointer group">
+                          <input type="checkbox" checked={draft.includes(p.code)} disabled={kunciOwner}
+                            onChange={() => toggle(p.code)}
+                            className="mt-0.5 w-3.5 h-3.5 accent-slate-900" />
+                          <span className="min-w-0">
+                            <span className="block text-xs text-slate-800 group-hover:text-slate-950">{p.label}</span>
+                            <span className="block text-[10px] font-mono text-slate-400">{p.code}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ===================== LOG AKTIVITAS ===================== */
+function LogAktivitas() {
+  const [rows, setRows] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [modul, setModul] = useState<string[]>([]);
+  const [aksi, setAksi] = useState<string[]>([]);
+  const [fModul, setFModul] = useState('ALL');
+  const [fAksi, setFAksi] = useState('ALL');
+  const [q, setQ] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    const p = new URLSearchParams({ module: fModul, action: fAksi, limit: '200' });
+    if (q) p.set('q', q);
+    fetch('/api/admin/audit?' + p.toString()).then(r => r.json()).then(d => {
+      if (d.success) { setRows(d.rows || []); setTotal(d.total || 0); setModul(d.modul || []); setAksi(d.aksi || []); }
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, [fModul, fAksi]);
+
+  const badge = (a: string) => a === 'DELETE' ? 'bg-rose-50 text-rose-700 border-rose-200'
+    : a === 'CREATE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    : a === 'UPDATE' ? 'bg-amber-50 text-amber-700 border-amber-200'
+    : 'bg-slate-100 text-slate-700 border-slate-200';
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs flex flex-wrap items-end gap-3">
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Modul</label>
+          <select value={fModul} onChange={e => setFModul(e.target.value)} className="border border-slate-200 rounded-xl px-3 py-2 text-xs">
+            <option value="ALL">Semua</option>
+            {modul.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Aksi</label>
+          <select value={fAksi} onChange={e => setFAksi(e.target.value)} className="border border-slate-200 rounded-xl px-3 py-2 text-xs">
+            <option value="ALL">Semua</option>
+            {aksi.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+        <div className="flex-1 min-w-[180px]">
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Cari</label>
+          <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && load()}
+            placeholder="email, id record, catatan…" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs" />
+        </div>
+        <button onClick={load} className="px-4 py-2 text-xs font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800">Cari</button>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <p className="text-sm font-black text-slate-900">Log Aktivitas</p>
+          <p className="text-[11px] text-slate-500">{total} catatan</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
+                <th className="p-3 whitespace-nowrap">Waktu</th>
+                <th className="p-3">Aksi</th>
+                <th className="p-3">Modul</th>
+                <th className="p-3">Record</th>
+                <th className="p-3">Pelaku</th>
+                <th className="p-3">Catatan</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.map(r => (
+                <tr key={r.id} className="hover:bg-slate-50 transition align-top">
+                  <td className="p-3 font-mono text-slate-500 whitespace-nowrap">{r.created_at}</td>
+                  <td className="p-3">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${badge(r.action)}`}>{r.action}</span>
+                  </td>
+                  <td className="p-3 font-bold text-slate-800">{r.module}</td>
+                  <td className="p-3 font-mono text-slate-600">{r.record_id || '—'}</td>
+                  <td className="p-3 text-slate-600">{r.user_email || '—'}</td>
+                  <td className="p-3 text-slate-500 max-w-[320px] truncate" title={r.notes || ''}>{r.notes || '—'}</td>
+                </tr>
+              ))}
+              {rows.length === 0 && !loading && (
+                <tr><td colSpan={6} className="text-center py-10 text-slate-400">Belum ada aktivitas tercatat.</td></tr>
+              )}
+              {loading && (
+                <tr><td colSpan={6} className="text-center py-8 text-slate-400">Memuat…</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PembayaranTab() {
   const [kode, setKode] = useState('');
   const [data, setData] = useState<any>(null);
@@ -2912,6 +3165,8 @@ export default function AdminDashboard() {
             items: [
               { id: 'settings' as Tab, perm: 'settings.manage', icon: <Building2 className="w-4 h-4" />, label: 'Profil Tour & Travel' },
               { id: 'staf' as Tab, perm: 'staff.manage', icon: <ShieldCheck className="w-4 h-4" />, label: 'Kelola Staf' },
+              { id: 'roles' as Tab, perm: 'staff.manage', icon: <KeyRound className="w-4 h-4" />, label: 'Izin per Role' },
+              { id: 'audit' as Tab, perm: 'audit.read', icon: <History className="w-4 h-4" />, label: 'Log Aktivitas' },
             ],
           },
         ]
@@ -3100,6 +3355,8 @@ export default function AdminDashboard() {
           {activeTab === 'transaksi' && <TransaksiTab />}
           {activeTab === 'manifest' && <ManifestTab />}
           {activeTab === 'staf' && has('staff.manage') && <KelolaStaf />}
+          {activeTab === 'roles' && has('staff.manage') && <KelolaIzinRole />}
+          {activeTab === 'audit' && has('audit.read') && <LogAktivitas />}
           {activeTab === 'settings' && has('settings.manage') && <PengaturanTab />}
           {activeTab === 'pembayaran' && <PembayaranTab />}
           {activeTab === 'registrations' && <RegistrationsTab />}

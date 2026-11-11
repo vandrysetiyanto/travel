@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import db, { initDB } from '@/lib/db';
-import { requireOwner } from '@/lib/auth';
 import { requirePermission, catatAudit } from '@/lib/permissions';
 
 initDB();
@@ -9,30 +8,31 @@ initDB();
 /**
  * Daftar role yang sah. Sebelumnya role apa pun selain 'OWNER' dipaksa menjadi
  * 'ADMIN', sehingga pilihan "STAFF" di UI diam-diam berubah jadi admin penuh.
- * Sekarang role divalidasi terhadap daftar ini dan disimpan apa adanya.
+ * Sekarang role divalidasi ke tabel `roles` (sumber kebenaran RBAC).
  */
-const ROLE_SAH = ['OWNER', 'ADMIN'] as const;
-function normalisasiRole(v: unknown): string {
+function roleSah(v: unknown): string | null {
   const r = String(v || '').trim().toUpperCase();
-  return (ROLE_SAH as readonly string[]).includes(r) ? r : 'ADMIN';
+  const row = db.prepare('SELECT code FROM roles WHERE code = ?').get(r) as { code: string } | undefined;
+  return row ? row.code : null;
 }
 
-/** Daftar staf — hanya OWNER. */
+/** Daftar staf — hanya pemegang staff.manage. */
 export async function GET(req: Request) {
   const auth = await requirePermission(req, 'staff.manage');
   if (!auth.ok) return auth.response;
 
   try {
     const users = db.prepare('SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC').all();
-    return NextResponse.json({ success: true, users });
+    const roles = db.prepare('SELECT code, name, is_system FROM roles ORDER BY is_system DESC, name ASC').all();
+    return NextResponse.json({ success: true, users, roles });
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
 }
 
-/** Kelola staf — hanya OWNER. Password SELALU disimpan sebagai hash bcrypt. */
+/** Kelola staf — hanya pemegang staff.manage. Password SELALU disimpan sebagai hash bcrypt. */
 export async function POST(req: Request) {
-  const auth = await requireOwner(req);
+  const auth = await requirePermission(req, 'staff.manage');
   if (!auth.ok) return auth.response;
 
   try {
@@ -40,7 +40,6 @@ export async function POST(req: Request) {
     const { action } = body;
 
     if (action === 'CREATE_USER') {
-      { const cek = await requirePermission(req, 'staff.manage'); if (!cek.ok) return cek.response; }
       const { name, email, password, role } = body;
       if (!name || !email || !password) {
         return NextResponse.json({ success: false, message: 'Nama, email, dan password wajib diisi' }, { status: 400 });
@@ -53,28 +52,43 @@ export async function POST(req: Request) {
       if (exist) {
         return NextResponse.json({ success: false, message: 'Email sudah terdaftar' }, { status: 400 });
       }
-      db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run(
+      const roleFinal = roleSah(role) ?? 'VIEWER';
+
+      /*
+       * ID user baru dipakai sebagai recordId audit (bukan email di kolom notes).
+       * `lastInsertRowid` adalah id baris yang baru dibuat — inilah identitas yang
+       * benar untuk menghubungkan jejak audit ke objeknya.
+       */
+      const info = db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run(
         name,
         cleanEmail,
         bcrypt.hashSync(String(password), 10),
-        normalisasiRole(role)
+        roleFinal,
       );
-      catatAudit({ user: auth.user, action: 'CREATE', module: 'user', notes: cleanEmail });
-      return NextResponse.json({ success: true, message: 'User berhasil dibuat' });
+      const baruId = Number(info.lastInsertRowid);
+
+      catatAudit({
+        user: auth.user,
+        action: 'CREATE',
+        module: 'user',
+        recordId: baruId,
+        after: { id: baruId, name, email: cleanEmail, role: roleFinal },
+      });
+
+      return NextResponse.json({ success: true, message: 'User berhasil dibuat', id: baruId });
     }
 
     if (action === 'UPDATE_USER') {
-      { const cek = await requirePermission(req, 'staff.manage'); if (!cek.ok) return cek.response; }
       const { id, name, email, password, role } = body;
       if (!id) return NextResponse.json({ success: false, message: 'ID user wajib dikirim' }, { status: 400 });
       if (!name || !email) return NextResponse.json({ success: false, message: 'Nama dan email wajib diisi' }, { status: 400 });
-      const cleanEmail = String(email).trim().toLowerCase();
 
+      const cleanEmail = String(email).trim().toLowerCase();
       const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as any;
       if (!target) return NextResponse.json({ success: false, message: 'User tidak ditemukan' }, { status: 404 });
-      const roleBaru = normalisasiRole(role);
 
-      // Jangan sampai sistem kehilangan owner terakhir.
+      const roleBaru = roleSah(role) ?? target.role;
+
       if (target.role === 'OWNER' && roleBaru !== 'OWNER') {
         const owners = db.prepare(`SELECT COUNT(*) as c FROM users WHERE role = 'OWNER'`).get() as any;
         if (owners.c <= 1) {
@@ -82,7 +96,6 @@ export async function POST(req: Request) {
         }
       }
 
-      // Email tidak boleh bentrok dengan user lain.
       const bentrok = db.prepare('SELECT id FROM users WHERE email = ? AND id <> ?').get(cleanEmail, id) as any;
       if (bentrok) {
         return NextResponse.json({ success: false, message: 'Email sudah dipakai user lain' }, { status: 400 });
@@ -93,32 +106,48 @@ export async function POST(req: Request) {
           return NextResponse.json({ success: false, message: 'Password minimal 8 karakter' }, { status: 400 });
         }
         db.prepare('UPDATE users SET name = ?, email = ?, password = ?, role = ? WHERE id = ?').run(
-          name,
-          cleanEmail,
-          bcrypt.hashSync(String(password), 10),
-          roleBaru,
-          id
+          name, cleanEmail, bcrypt.hashSync(String(password), 10), roleBaru, id,
         );
       } else {
         db.prepare('UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?').run(name, cleanEmail, roleBaru, id);
       }
-      catatAudit({ user: auth.user, action: 'UPDATE', module: 'user', recordId: id });
+
+      catatAudit({
+        user: auth.user,
+        action: 'UPDATE',
+        module: 'user',
+        recordId: Number(id),
+        before: { id: target.id, name: target.name, email: target.email, role: target.role },
+        after: { id: Number(id), name, email: cleanEmail, role: roleBaru, password_diubah: !!password },
+      });
+
       return NextResponse.json({ success: true, message: 'User berhasil diperbarui' });
     }
 
     if (action === 'DELETE_USER') {
-      { const cek = await requirePermission(req, 'staff.manage'); if (!cek.ok) return cek.response; }
       const { id } = body;
+      if (!id) return NextResponse.json({ success: false, message: 'ID user wajib dikirim' }, { status: 400 });
+
       const count = db.prepare(`SELECT COUNT(*) as c FROM users WHERE role = 'OWNER'`).get() as any;
       const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as any;
-      if (target?.role === 'OWNER' && count.c <= 1) {
+      if (!target) return NextResponse.json({ success: false, message: 'User tidak ditemukan' }, { status: 404 });
+      if (target.role === 'OWNER' && count.c <= 1) {
         return NextResponse.json({ success: false, message: 'Tidak dapat menghapus satu-satunya akun Owner' }, { status: 400 });
       }
       if (Number(id) === auth.user?.uid) {
         return NextResponse.json({ success: false, message: 'Tidak dapat menghapus akun Anda sendiri' }, { status: 400 });
       }
+
       db.prepare('DELETE FROM users WHERE id = ?').run(id);
-      catatAudit({ user: auth.user, action: 'DELETE', module: 'user', recordId: id });
+
+      catatAudit({
+        user: auth.user,
+        action: 'DELETE',
+        module: 'user',
+        recordId: Number(id),
+        before: { id: target.id, name: target.name, email: target.email, role: target.role },
+      });
+
       return NextResponse.json({ success: true, message: 'User berhasil dihapus' });
     }
 
