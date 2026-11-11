@@ -40,3 +40,5 @@ yarn-error.log*
 /skills-lock.json
 /strix_runs/
 /tmp/
+# artefak skill agent di dalam folder data
+/data/skills/
