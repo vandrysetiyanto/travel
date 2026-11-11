@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
+import { requireAdmin } from '@/lib/auth';
 import { pilgrimCountOf } from '@/lib/booking';
 
 initDB();
 
 /** Daftar booking (skema baru: `transactions` + anggota lewat group_code). */
 export async function GET(req: Request) {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(req.url);
     const batchId = searchParams.get('batch_id');

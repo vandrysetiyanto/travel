@@ -5,6 +5,17 @@ import { requireOwner } from '@/lib/auth';
 
 initDB();
 
+/**
+ * Daftar role yang sah. Sebelumnya role apa pun selain 'OWNER' dipaksa menjadi
+ * 'ADMIN', sehingga pilihan "STAFF" di UI diam-diam berubah jadi admin penuh.
+ * Sekarang role divalidasi terhadap daftar ini dan disimpan apa adanya.
+ */
+const ROLE_SAH = ['OWNER', 'ADMIN'] as const;
+function normalisasiRole(v: unknown): string {
+  const r = String(v || '').trim().toUpperCase();
+  return (ROLE_SAH as readonly string[]).includes(r) ? r : 'ADMIN';
+}
+
 /** Daftar staf — hanya OWNER. */
 export async function GET(req: Request) {
   const auth = await requireOwner(req);
@@ -44,21 +55,33 @@ export async function POST(req: Request) {
         name,
         cleanEmail,
         bcrypt.hashSync(String(password), 10),
-        role === 'OWNER' ? 'OWNER' : 'ADMIN'
+        normalisasiRole(role)
       );
       return NextResponse.json({ success: true, message: 'User berhasil dibuat' });
     }
 
     if (action === 'UPDATE_USER') {
       const { id, name, email, password, role } = body;
+      if (!id) return NextResponse.json({ success: false, message: 'ID user wajib dikirim' }, { status: 400 });
+      if (!name || !email) return NextResponse.json({ success: false, message: 'Nama dan email wajib diisi' }, { status: 400 });
       const cleanEmail = String(email).trim().toLowerCase();
 
       const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as any;
-      if (target && target.role === 'OWNER' && role !== 'OWNER') {
+      if (!target) return NextResponse.json({ success: false, message: 'User tidak ditemukan' }, { status: 404 });
+      const roleBaru = normalisasiRole(role);
+
+      // Jangan sampai sistem kehilangan owner terakhir.
+      if (target.role === 'OWNER' && roleBaru !== 'OWNER') {
         const owners = db.prepare(`SELECT COUNT(*) as c FROM users WHERE role = 'OWNER'`).get() as any;
         if (owners.c <= 1) {
           return NextResponse.json({ success: false, message: 'Tidak dapat menurunkan role satu-satunya akun Owner' }, { status: 400 });
         }
+      }
+
+      // Email tidak boleh bentrok dengan user lain.
+      const bentrok = db.prepare('SELECT id FROM users WHERE email = ? AND id <> ?').get(cleanEmail, id) as any;
+      if (bentrok) {
+        return NextResponse.json({ success: false, message: 'Email sudah dipakai user lain' }, { status: 400 });
       }
 
       if (password) {
@@ -69,11 +92,11 @@ export async function POST(req: Request) {
           name,
           cleanEmail,
           bcrypt.hashSync(String(password), 10),
-          role,
+          roleBaru,
           id
         );
       } else {
-        db.prepare('UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?').run(name, cleanEmail, role, id);
+        db.prepare('UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?').run(name, cleanEmail, roleBaru, id);
       }
       return NextResponse.json({ success: true, message: 'User berhasil diperbarui' });
     }

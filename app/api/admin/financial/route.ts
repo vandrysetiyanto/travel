@@ -185,6 +185,30 @@ export async function POST(request: Request) {
 
     if (action === 'DELETE_COA') {
       const { id } = body;
+      if (!id) return NextResponse.json({ success: false, message: 'ID akun wajib dikirim' }, { status: 400 });
+
+      const akun = db.prepare('SELECT id, coa_code, coa_name FROM chart_of_accounts WHERE id = ?').get(id) as any;
+      if (!akun) return NextResponse.json({ success: false, message: 'Akun tidak ditemukan' }, { status: 404 });
+
+      /*
+       * Akun yang sudah dipakai transaksi tidak boleh dihapus: kalau dihapus, semua
+       * laporan (laba rugi, neraca, buku besar) kehilangan rujukannya dan angkanya
+       * jadi salah tanpa jejak. Nonaktifkan (is_active = 0) adalah pilihan yang benar.
+       */
+      const pakai = db.prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM expenses WHERE coa_account_id = ?) AS expenses,
+          (SELECT COUNT(*) FROM ledger WHERE coa_account_id = ?) AS ledger,
+          (SELECT COUNT(*) FROM general_journals WHERE debit_coa_id = ? OR credit_coa_id = ?) AS journals
+      `).get(id, id, id, id) as any;
+      const total = Number(pakai.expenses) + Number(pakai.ledger) + Number(pakai.journals);
+      if (total > 0) {
+        return NextResponse.json({
+          success: false,
+          message: `Akun ${akun.coa_code} — ${akun.coa_name} sudah dipakai (${pakai.expenses} beban, ${pakai.ledger} baris buku besar, ${pakai.journals} jurnal). Nonaktifkan akun ini, jangan dihapus.`,
+        }, { status: 409 });
+      }
+
       db.prepare('DELETE FROM chart_of_accounts WHERE id = ?').run(id);
       return NextResponse.json({ success: true, message: 'Akun COA dihapus' });
     }
@@ -220,8 +244,23 @@ export async function POST(request: Request) {
 
     if (action === 'DELETE_EXPENSE') {
       const { id } = body;
-      db.prepare('DELETE FROM expenses WHERE id = ?').run(id);
-      return NextResponse.json({ success: true, message: 'Catatan beban dihapus' });
+      if (!id) return NextResponse.json({ success: false, message: 'ID beban wajib dikirim' }, { status: 400 });
+
+      const beban = db.prepare('SELECT * FROM expenses WHERE id = ?').get(id) as any;
+      if (!beban) return NextResponse.json({ success: false, message: 'Catatan beban tidak ditemukan' }, { status: 404 });
+
+      /*
+       * Beban dan baris buku besarnya harus hilang bersama — kalau hanya barisnya
+       * yang dihapus, ledger menyimpan kredit tanpa dokumen sumber dan neraca
+       * tidak lagi bisa dipertanggungjawabkan.
+       */
+      const hapus = db.transaction(() => {
+        db.prepare('DELETE FROM ledger WHERE expense_id = ?').run(id);
+        db.prepare('DELETE FROM expenses WHERE id = ?').run(id);
+      });
+      hapus();
+
+      return NextResponse.json({ success: true, message: 'Catatan beban & baris buku besarnya dihapus' });
     }
 
     if (action === 'GET_JOURNALS') {
@@ -264,8 +303,32 @@ export async function POST(request: Request) {
 
     if (action === 'DELETE_JOURNAL') {
       const { id } = body;
-      db.prepare('DELETE FROM general_journals WHERE id = ?').run(id);
-      return NextResponse.json({ success: true, message: 'Jurnal umum dihapus' });
+      if (!id) return NextResponse.json({ success: false, message: 'ID jurnal wajib dikirim' }, { status: 400 });
+
+      const jurnal = db.prepare('SELECT * FROM general_journals WHERE id = ?').get(id) as any;
+      if (!jurnal) return NextResponse.json({ success: false, message: 'Jurnal tidak ditemukan' }, { status: 404 });
+
+      /*
+       * ADD_JOURNAL menulis 2 baris ledger (debit + kredit) tanpa menyimpan tautan
+       * ke jurnalnya. Karena itu saat jurnal dihapus, pasangan ledger-nya harus ikut
+       * dihapus berdasarkan "sidik" yang sama: tanggal, nominal, dan keterangan.
+       * Ini satu-satunya cara menghapus jurnal TANPA merusak keseimbangan buku besar.
+       */
+      const ket = jurnal.description || 'Jurnal Umum';
+      const hapus = db.transaction(() => {
+        db.prepare(`
+          DELETE FROM ledger
+          WHERE entry_date = ? AND amount = ? AND description IN (?, ?)
+        `).run(jurnal.journal_date, jurnal.amount, ket, `${ket} (Debit)`);
+        db.prepare(`
+          DELETE FROM ledger
+          WHERE entry_date = ? AND amount = ? AND description IN (?, ?)
+        `).run(jurnal.journal_date, jurnal.amount, ket, `${ket} (Kredit)`);
+        db.prepare('DELETE FROM general_journals WHERE id = ?').run(id);
+      });
+      hapus();
+
+      return NextResponse.json({ success: true, message: 'Jurnal umum & pasangan buku besarnya dihapus' });
     }
 
     if (action === 'GET_LEDGER') {

@@ -1519,9 +1519,13 @@ function KelolaStaf() {
   useEffect(()=>{load();},[]);
 
   const save = async () => {
-    if(!form.name||!form.username||(mode==='add'&&!form.password)) return alert('Nama, username, dan password wajib diisi');
+    const email = String(form.email || '').trim().toLowerCase();
+    if (!form.name) return alert('Nama wajib diisi');
+    if (!email) return alert('Email wajib diisi (dipakai untuk login)');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return alert('Format email tidak valid');
+    if (mode === 'add' && !form.password) return alert('Password wajib diisi untuk staf baru');
     const action = mode === 'edit' ? 'UPDATE_USER' : 'CREATE_USER';
-    const res = await fetch('/api/admin/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form, action})});
+    const res = await fetch('/api/admin/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form, email, action})});
     const d = await res.json(); 
     if(d.success){
       alert('Berhasil menyimpan staf');
@@ -1564,8 +1568,8 @@ function KelolaStaf() {
                 <input type="text" value={form.name||''} onChange={e=>setForm({...form, name:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" placeholder="Nama lengkap..." />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Username *</label>
-                <input type="text" value={form.username||''} onChange={e=>setForm({...form, username:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" placeholder="Username login..." />
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Email (untuk login) *</label>
+                <input type="email" value={form.email||''} onChange={e=>setForm({...form, email:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" placeholder="nama@travel.com" autoComplete="off" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Password {mode==='edit' && '(Kosongkan jika tidak diubah)'}</label>
@@ -1573,10 +1577,11 @@ function KelolaStaf() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Role / Hak Akses *</label>
-                <select value={form.role||'STAFF'} onChange={e=>setForm({...form, role:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
-                  <option value="STAFF">STAFF</option>
+                <select value={form.role||'ADMIN'} onChange={e=>setForm({...form, role:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
+                  <option value="ADMIN">ADMIN</option>
                   <option value="OWNER">OWNER</option>
                 </select>
+                <p className="text-[10px] text-slate-500 mt-1">Pemisahan izin per modul menyusul pada tahap RBAC.</p>
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
@@ -1592,7 +1597,7 @@ function KelolaStaf() {
           <thead>
             <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
               <th className="p-3">Nama</th>
-              <th className="p-3">Username</th>
+              <th className="p-3">Email</th>
               <th className="p-3">Role</th>
               <th className="p-3 text-right">Aksi</th>
             </tr>
@@ -1601,7 +1606,7 @@ function KelolaStaf() {
             {list.map(u=>(
               <tr key={u.id} className="hover:bg-slate-50 transition">
                 <td className="p-3 font-bold text-slate-900">{u.name}</td>
-                <td className="p-3 font-mono text-slate-600">{u.username}</td>
+                <td className="p-3 font-mono text-slate-600">{u.email}</td>
                 <td className="p-3">
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${u.role==='OWNER'?'bg-indigo-50 text-indigo-700':'bg-slate-100 text-slate-700'}`}>{u.role}</span>
                 </td>

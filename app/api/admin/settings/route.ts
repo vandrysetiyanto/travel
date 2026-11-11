@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
+import { requireAdmin, requireOwner } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
+
   try {
     initDB();
     const profile = db.prepare('SELECT * FROM company_profile WHERE id = 1').get() || {};
@@ -15,6 +19,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireOwner(req);
+  if (!auth.ok) return auth.response;
+
   try {
     initDB();
     const body = await req.json();

@@ -41,6 +41,41 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
+
+    /*
+     * Hapus jamaah. UI (dashboard) sudah lama mengirim action ini, tetapi route-nya
+     * belum pernah menanganinya — tombol hapus jadi gagal diam-diam.
+     * Aturan: jamaah yang sudah punya booking TIDAK dihapus (jejak keuangan harus utuh);
+     * checklist-nya ikut dibersihkan karena hanya milik jamaah tersebut.
+     */
+    if (String(body.action || '').toUpperCase() === 'DELETE_JAMAAH') {
+      const id = Number(body.id);
+      if (!id) {
+        return NextResponse.json({ success: false, message: 'ID jamaah wajib dikirim' }, { status: 400 });
+      }
+
+      const target = db.prepare('SELECT id, full_name FROM master_jamaah WHERE id = ?').get(id) as any;
+      if (!target) {
+        return NextResponse.json({ success: false, message: 'Jamaah tidak ditemukan' }, { status: 404 });
+      }
+
+      const booking = db.prepare('SELECT COUNT(*) as c FROM transactions WHERE jamaah_id = ?').get(id) as any;
+      if (booking.c > 0) {
+        return NextResponse.json({
+          success: false,
+          message: `Jamaah "${target.full_name}" sudah punya ${booking.c} booking. Riwayat keuangan tidak boleh dihapus — batalkan booking dulu.`,
+        }, { status: 409 });
+      }
+
+      const hapus = db.transaction(() => {
+        db.prepare('DELETE FROM jamaah_checklist WHERE jamaah_id = ?').run(id);
+        db.prepare('DELETE FROM master_jamaah WHERE id = ?').run(id);
+      });
+      hapus();
+
+      return NextResponse.json({ success: true, message: `Jamaah "${target.full_name}" berhasil dihapus` });
+    }
+
     const {
       nik, no_kk, full_name, gender, birth_place, birth_date,
       phone, email, address, passport_number, passport_expiry,

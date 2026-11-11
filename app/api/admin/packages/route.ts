@@ -115,9 +115,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: 'Batch keberangkatan berhasil diperbarui!' });
     }
 
-    // 5. Delete Batch
+    // 5. Delete Batch — hanya bila belum dipakai booking.
     if (action === 'DELETE_BATCH') {
       const { id } = body;
+      if (!id) {
+        return NextResponse.json({ success: false, message: 'ID batch wajib dikirim' }, { status: 400 });
+      }
+
+      const target = db.prepare('SELECT id, batch_name FROM batches WHERE id = ?').get(id) as any;
+      if (!target) {
+        return NextResponse.json({ success: false, message: 'Batch tidak ditemukan' }, { status: 404 });
+      }
+
+      /*
+       * Batch yang sudah punya booking tidak boleh dihapus: transactions.batch_id
+       * memakai foreign key tanpa ON DELETE CASCADE, sehingga penghapusan akan
+       * gagal dengan error SQLite mentah (atau, bila FK dilonggarkan, meninggalkan
+       * booking yatim yang merusak laporan).
+       */
+      const dipakai = db.prepare('SELECT COUNT(*) as c FROM transactions WHERE batch_id = ?').get(id) as any;
+      if (dipakai.c > 0) {
+        return NextResponse.json({
+          success: false,
+          message: `Batch "${target.batch_name}" masih dipakai ${dipakai.c} booking. Batalkan booking atau ubah status batch menjadi CLOSED.`,
+        }, { status: 409 });
+      }
+
       db.prepare('DELETE FROM batches WHERE id = ?').run(id);
       return NextResponse.json({ success: true, message: 'Batch berhasil dihapus' });
     }
