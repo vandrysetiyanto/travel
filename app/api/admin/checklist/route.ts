@@ -61,17 +61,55 @@ export async function POST(request: Request) {
 
       // Inventory adjustment if linked and status changed to SUDAH / DIAMBIL from BELUM (or vice versa)
       if (masterItem && masterItem.is_inventory_linked && masterItem.inventory_item_id) {
-        if (oldStatus === 'BELUM' && (status === 'SUDAH' || status === 'DIAMBIL')) {
-          // Reduce inventory stock
-          db.prepare('UPDATE inventory_items SET stock_total = MAX(0, stock_total - 1) WHERE id = ?').run(masterItem.inventory_item_id);
-          // Record handover log for Stock Ledger report
-          db.prepare(`
-            INSERT INTO inventory_handover (item_id, qty, transaction_id, handed_at, notes)
-            VALUES (?, 1, NULL, CURRENT_TIMESTAMP, ?)
-          `).run(masterItem.inventory_item_id, 'Diserahkan ke jamaah - Checklist Kelengkapan');
-        } else if ((oldStatus === 'SUDAH' || oldStatus === 'DIAMBIL') && status === 'BELUM') {
-          // Restore inventory stock
-          db.prepare('UPDATE inventory_items SET stock_total = stock_total + 1 WHERE id = ?').run(masterItem.inventory_item_id);
+        const naik = status === 'SUDAH' || status === 'DIAMBIL';
+        const turun = status === 'BELUM';
+        const sebelumnyaNaik = oldStatus === 'SUDAH' || oldStatus === 'DIAMBIL';
+        const sebelumnyaTurun = oldStatus === 'BELUM';
+
+        if (sebelumnyaTurun && naik) {
+          /*
+           * Barang diserahkan. Sebelumnya blok ini menulis kolom `handed_at`
+           * yang tidak ada (nama benarnya `handed_over_at`) dan mengirim
+           * transaction_id = NULL padahal kolomnya NOT NULL — sehingga setiap
+           * centang berujung error 500 dan stok tidak tercatat.
+           *
+           * Sekarang: booking dicari lewat booking_jamaah (id), penyerahan
+           * dicatat dengan kolom yang benar + jamaah_id, stok dipotong dalam
+           * satu transaksi. Bila jamaah belum punya booking, stok tetap
+           * dipotong tetapi baris handover dilewati (kolom transaction_id
+           * masih NOT NULL di skema lama).
+           */
+          const booking = db
+            .prepare(`SELECT transaction_id FROM booking_jamaah WHERE jamaah_id = ? ORDER BY id DESC LIMIT 1`)
+            .get(jamaah_id) as { transaction_id: number } | undefined;
+
+          const simpan = db.transaction(() => {
+            db.prepare('UPDATE inventory_items SET stock_total = MAX(0, stock_total - 1) WHERE id = ?')
+              .run(masterItem.inventory_item_id);
+            if (booking?.transaction_id) {
+              db.prepare(`
+                INSERT INTO inventory_handover (item_id, qty, transaction_id, jamaah_id, handed_over_at, notes)
+                VALUES (?, 1, ?, ?, CURRENT_TIMESTAMP, ?)
+              `).run(
+                masterItem.inventory_item_id,
+                booking.transaction_id,
+                jamaah_id,
+                `Diserahkan ke jamaah #${jamaah_id} - ${masterItem.item_name}`,
+              );
+            }
+          });
+          simpan();
+        } else if (sebelumnyaNaik && turun) {
+          // Dikembalikan: stok pulih dan baris penyerahan terakhir dicabut.
+          const simpan = db.transaction(() => {
+            db.prepare('UPDATE inventory_items SET stock_total = stock_total + 1 WHERE id = ?')
+              .run(masterItem.inventory_item_id);
+            const terakhir = db
+              .prepare(`SELECT id FROM inventory_handover WHERE item_id = ? AND jamaah_id = ? ORDER BY id DESC LIMIT 1`)
+              .get(masterItem.inventory_item_id, jamaah_id) as { id: number } | undefined;
+            if (terakhir) db.prepare('DELETE FROM inventory_handover WHERE id = ?').run(terakhir.id);
+          });
+          simpan();
         }
       }
 

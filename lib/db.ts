@@ -249,6 +249,28 @@ export function initDB() {
   ensureIndex('idx_jamaah_group', 'CREATE INDEX IF NOT EXISTS idx_jamaah_group ON master_jamaah(group_code)');
   ensureIndex('idx_tx_booking', 'CREATE INDEX IF NOT EXISTS idx_tx_booking ON transactions(booking_code)');
 
+  // ── Relasi booking <-> jamaah lewat id (bukan group_code) ──
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { pastikanBookingJamaah } = require('@/lib/booking-jamaah');
+    pastikanBookingJamaah();
+  } catch (e) {
+    console.error('[initDB] pastikanBookingJamaah gagal:', (e as Error).message);
+  }
+
+  // Kolom tautan ledger -> dokumen sumber. Tanpa ini setiap baris buku besar
+  // tidak bisa ditelusuri, dan ON DELETE CASCADE tidak pernah berfungsi.
+  ensureColumn('ledger', 'journal_id', 'journal_id INTEGER');
+  ensureColumn('ledger', 'payment_id', 'payment_id INTEGER');
+  ensureColumn('payment_history', 'ledger_id', 'ledger_id INTEGER');
+  // Barang bisa diserahkan ke orang tertentu, bukan hanya ke booking.
+  ensureColumn('inventory_handover', 'jamaah_id', 'jamaah_id INTEGER');
+  ensureIndex('idx_handover_jamaah', 'CREATE INDEX IF NOT EXISTS idx_handover_jamaah ON inventory_handover(jamaah_id)');
+  ensureColumn('payment_history', 'verified_by', 'verified_by TEXT');
+  ensureIndex('idx_ledger_journal', 'CREATE INDEX IF NOT EXISTS idx_ledger_journal ON ledger(journal_id)');
+  ensureIndex('idx_ledger_payment', 'CREATE INDEX IF NOT EXISTS idx_ledger_payment ON ledger(payment_id)');
+  ensureIndex('idx_pay_status', 'CREATE INDEX IF NOT EXISTS idx_pay_status ON payment_history(status)');
+
   // Migrate older registrations to new schema if table exists
   try {
     const checkOldRegs = db.prepare(`SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name='registrations'`).get() as any;

@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     const totalReceivables = db.prepare('SELECT COALESCE(SUM(remaining_amount),0) as c FROM transactions').get() as any;
 
     const pendingVerification = db
-      .prepare("SELECT COUNT(*) as c FROM payment_history WHERE status = 'WAITING_APPROVAL'")
+      .prepare("SELECT COUNT(*) as c FROM payment_history WHERE status IN ('PENDING','WAITING_APPROVAL')")
       .get() as any;
 
     const recentTransactions = db.prepare(`

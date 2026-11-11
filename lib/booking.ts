@@ -6,33 +6,31 @@ import db from './db';
  *  fallback hitung dari jemaah yang terhubung lewat group_code. */
 export function pilgrimCountOf(tx: { id: number; total_pilgrims?: number; booking_code?: string }): number {
   if (tx.total_pilgrims && tx.total_pilgrims > 0) return tx.total_pilgrims;
-  if (tx.booking_code) {
-    const r = db
-      .prepare(`SELECT COUNT(*) as c FROM master_jamaah WHERE group_code = ? AND group_code IS NOT NULL`)
-      .get(tx.booking_code) as any;
+  // Fallback: hitung dari tabel penghubung id, bukan dari group_code (teks).
+  if (tx.id) {
+    const r = db.prepare('SELECT COUNT(*) as c FROM booking_jamaah WHERE transaction_id = ?').get(tx.id) as any;
     if (r && r.c > 0) return r.c;
   }
   return 1;
 }
 
-/** Daftar jemaah satu booking: leader (transactions.jamaah_id) + anggota group_code. */
+/** Daftar jemaah satu booking: leader + anggota, lewat tabel booking_jamaah (id). */
 export function pilgrimsOf(tx: { id: number; jamaah_id: number; booking_code?: string }): any[] {
+  const rows = db
+    .prepare(`
+      SELECT j.*, bj.peran, bj.urutan
+      FROM booking_jamaah bj
+      JOIN master_jamaah j ON j.id = bj.jamaah_id
+      WHERE bj.transaction_id = ?
+      ORDER BY bj.urutan ASC, bj.id ASC
+    `)
+    .all(tx.id) as any[];
+
+  if (rows.length) return rows;
+
+  // Data lama (sebelum tabel penghubung ada): leader saja.
   const leader = db.prepare('SELECT * FROM master_jamaah WHERE id = ?').get(tx.jamaah_id) as any;
-  let members: any[] = [];
-  if (tx.booking_code) {
-    members = db
-      .prepare('SELECT * FROM master_jamaah WHERE group_code = ? AND group_code IS NOT NULL ORDER BY id ASC')
-      .all(tx.booking_code) as any[];
-  }
-  const merged: any[] = [];
-  const seen = new Set<number>();
-  for (const p of [leader, ...members]) {
-    if (p && !seen.has(p.id)) {
-      seen.add(p.id);
-      merged.push(p);
-    }
-  }
-  return merged;
+  return leader ? [leader] : [];
 }
 
 /** payment_history -> bentuk yang dipakai TrackForm (payment_number + status verifikasi). */
@@ -40,7 +38,7 @@ export function mapPayment(p: any) {
   return {
     ...p,
     payment_number: p.receipt_number,
-    status: p.status === 'REJECTED' ? 'REJECTED' : p.status === 'WAITING_APPROVAL' ? 'WAITING_APPROVAL' : 'APPROVED',
+    status: p.status === 'REJECTED' ? 'REJECTED' : (p.status === 'PENDING' || p.status === 'WAITING_APPROVAL') ? 'PENDING' : 'APPROVED',
   };
 }
 

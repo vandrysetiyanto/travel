@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { requirePermission, catatAudit } from '@/lib/permissions';
+import { tulisLedger } from '@/lib/ledger';
 
 initDB();
 
@@ -235,18 +236,36 @@ export async function POST(request: Request) {
       if (!coa_account_id || !amount) {
         return NextResponse.json({ success: false, message: 'Akun dan jumlah beban wajib diisi' }, { status: 400 });
       }
-      const res = db.prepare(`
-        INSERT INTO expenses (coa_account_id, amount, description, expense_date)
-        VALUES (?, ?, ?, ?)
-      `).run(coa_account_id, amount, description || '', expense_date || new Date().toISOString().split('T')[0]);
+      const tgl = expense_date || new Date().toISOString().split('T')[0];
 
-      // Also record in ledger with correct schema (coa_account_id, entry_type, amount)
-      db.prepare(`
-        INSERT INTO ledger (entry_date, coa_account_id, entry_type, amount, description)
-        VALUES (?, ?, 'CREDIT', ?, ?)
-      `).run(expense_date || new Date().toISOString().split('T')[0], coa_account_id, amount, description || 'Beban Operasional');
+      /*
+       * Beban dan baris buku besarnya ditulis dalam satu transaksi, dan baris
+       * ledger WAJIB menunjuk expense_id. Sebelumnya id tidak diisi sehingga
+       * menghapus beban tidak pernah menghapus jurnalnya (ledger yatim).
+       */
+      const info = db.transaction(() => {
+        const res = db.prepare(`
+          INSERT INTO expenses (coa_account_id, amount, description, expense_date, created_by)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(coa_account_id, amount, description || '', tgl, auth.user?.email || 'Admin');
+        const expenseId = Number(res.lastInsertRowid);
 
-      return NextResponse.json({ success: true, message: 'Beban operasional berhasil dicatat', expense_id: Number(res.lastInsertRowid) });
+        tulisLedger(
+          { expenseId },
+          {
+            coaAccountId: Number(coa_account_id),
+            entryType: 'CREDIT',
+            amount: Number(amount),
+            description: description || 'Beban Operasional',
+            entryDate: tgl,
+          },
+        );
+
+        return expenseId;
+      })();
+
+      catatAudit({ user: auth.user, action: 'CREATE', module: 'expense', recordId: info, after: { coa_account_id, amount, description, tgl } });
+      return NextResponse.json({ success: true, message: 'Beban operasional berhasil dicatat', expense_id: info });
     }
 
     if (action === 'DELETE_EXPENSE') {
@@ -292,24 +311,38 @@ export async function POST(request: Request) {
       if (!journal_date || !debit_coa_id || !credit_coa_id || !amount) {
         return NextResponse.json({ success: false, message: 'Semua field wajib diisi (Tanggal, Akun Debit, Akun Kredit, Jumlah)' }, { status: 400 });
       }
+      if (Number(debit_coa_id) === Number(credit_coa_id)) {
+        return NextResponse.json({ success: false, message: 'Akun debit dan kredit tidak boleh sama' }, { status: 400 });
+      }
 
-      const res = db.prepare(`
-        INSERT INTO general_journals (journal_date, reference_no, description, debit_coa_id, credit_coa_id, amount)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(journal_date, reference_no || 'JRN-' + Math.floor(1000 + Math.random() * 9000), description || 'Jurnal Umum', debit_coa_id, credit_coa_id, amount);
+      const refNo = reference_no || 'JRN-' + Math.floor(1000 + Math.random() * 9000);
 
-      // Also record both debit and credit entries in ledger for strict double-entry accounting
-      db.prepare(`
-        INSERT INTO ledger (entry_date, coa_account_id, entry_type, amount, description)
-        VALUES (?, ?, 'DEBIT', ?, ?)
-      `).run(journal_date, debit_coa_id, amount, description || 'Jurnal Umum (Debit)');
+      /*
+       * Jurnal + dua baris ledger ditulis atomik, dan setiap baris ledger
+       * menyimpan journal_id. Inilah yang membuat DELETE_JOURNAL tidak perlu
+       * lagi menebak lewat tanggal+nominal+keterangan.
+       */
+      const hasil = db.transaction(() => {
+        const res = db.prepare(`
+          INSERT INTO general_journals (journal_date, reference_no, description, debit_coa_id, credit_coa_id, amount)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(journal_date, refNo, description || 'Jurnal Umum', debit_coa_id, credit_coa_id, amount);
+        const journalId = Number(res.lastInsertRowid);
 
-      db.prepare(`
-        INSERT INTO ledger (entry_date, coa_account_id, entry_type, amount, description)
-        VALUES (?, ?, 'CREDIT', ?, ?)
-      `).run(journal_date, credit_coa_id, amount, description || 'Jurnal Umum (Kredit)');
+        tulisLedger(
+          { journalId },
+          { coaAccountId: Number(debit_coa_id), entryType: 'DEBIT', amount: Number(amount), description: description || 'Jurnal Umum', entryDate: journal_date, reference: refNo },
+        );
+        tulisLedger(
+          { journalId },
+          { coaAccountId: Number(credit_coa_id), entryType: 'CREDIT', amount: Number(amount), description: description || 'Jurnal Umum', entryDate: journal_date, reference: refNo },
+        );
 
-      return NextResponse.json({ success: true, message: 'Jurnal umum berhasil dicatat & disinkronkan ke buku besar', id: Number(res.lastInsertRowid) });
+        return journalId;
+      })();
+
+      catatAudit({ user: auth.user, action: 'CREATE', module: 'journal', recordId: hasil, after: { journal_date, refNo, debit_coa_id, credit_coa_id, amount } });
+      return NextResponse.json({ success: true, message: 'Jurnal umum berhasil dicatat & disinkronkan ke buku besar', id: hasil });
     }
 
     if (action === 'DELETE_JOURNAL') {
@@ -321,26 +354,25 @@ export async function POST(request: Request) {
       if (!jurnal) return NextResponse.json({ success: false, message: 'Jurnal tidak ditemukan' }, { status: 404 });
 
       /*
-       * ADD_JOURNAL menulis 2 baris ledger (debit + kredit) tanpa menyimpan tautan
-       * ke jurnalnya. Karena itu saat jurnal dihapus, pasangan ledger-nya harus ikut
-       * dihapus berdasarkan "sidik" yang sama: tanggal, nominal, dan keterangan.
-       * Ini satu-satunya cara menghapus jurnal TANPA merusak keseimbangan buku besar.
+       * Sejak baris ledger menyimpan journal_id, penghapusan memakai id —
+       * bukan lagi menebak lewat tanggal+nominal+keterangan (yang bisa
+       * menghapus baris milik jurnal lain). Sisa baris lama yang belum
+       * bertaut journal_id dibersihkan lewat sidik keterangan sebagai
+       * jaring pengaman untuk data historis saja.
        */
       const ket = jurnal.description || 'Jurnal Umum';
       const hapus = db.transaction(() => {
+        db.prepare('DELETE FROM ledger WHERE journal_id = ?').run(id);
         db.prepare(`
           DELETE FROM ledger
-          WHERE entry_date = ? AND amount = ? AND description IN (?, ?)
-        `).run(jurnal.journal_date, jurnal.amount, ket, `${ket} (Debit)`);
-        db.prepare(`
-          DELETE FROM ledger
-          WHERE entry_date = ? AND amount = ? AND description IN (?, ?)
-        `).run(jurnal.journal_date, jurnal.amount, ket, `${ket} (Kredit)`);
+          WHERE journal_id IS NULL AND entry_date = ? AND amount = ?
+            AND description IN (?, ?, ?)
+        `).run(jurnal.journal_date, jurnal.amount, ket, `${ket} (Debit)`, `${ket} (Kredit)`);
         db.prepare('DELETE FROM general_journals WHERE id = ?').run(id);
       });
       hapus();
 
-      catatAudit({ user: auth.user, action: 'DELETE', module: 'journal', recordId: id });
+      catatAudit({ user: auth.user, action: 'DELETE', module: 'journal', recordId: Number(id), before: jurnal });
       return NextResponse.json({ success: true, message: 'Jurnal umum & pasangan buku besarnya dihapus' });
     }
 

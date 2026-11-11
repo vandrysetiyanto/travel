@@ -26,10 +26,8 @@ export async function GET(request: Request) {
       FROM transactions t
       JOIN batches b ON b.id = t.batch_id
       JOIN packages p ON p.id = b.package_id
-      JOIN master_jamaah j ON (
-        j.id = t.jamaah_id
-        OR (j.group_code IS NOT NULL AND j.group_code <> '' AND j.group_code = t.booking_code)
-      )
+      JOIN booking_jamaah bj ON bj.transaction_id = t.id
+      JOIN master_jamaah j ON j.id = bj.jamaah_id
       WHERE 1=1
     `;
     const params: any[] = [];

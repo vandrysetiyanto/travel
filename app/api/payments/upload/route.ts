@@ -55,10 +55,14 @@ export async function POST(req: Request) {
 
     const receiptNumber = generateReceiptNumber();
 
-    // Wajib menunggu verifikasi admin sebelum ikut menambah paid_amount.
+    /*
+     * Bukti transfer dari jamaah WAJIB berstatus PENDING.
+     * Sebelumnya default kolom adalah 'APPROVED', sehingga setiap unggahan
+     * langsung dianggap sah tanpa disentuh admin — sumber utama selisih kas.
+     */
     db.prepare(
       `INSERT INTO payment_history (transaction_id, receipt_number, amount, payment_type, payment_phase, bank_name,
-        account_name, proof_image, status, notes, created_by) VALUES (?, ?, ?, 'TRANSFER', ?, ?, ?, ?, 'WAITING_APPROVAL', ?, 'Jemaah (online)')`
+        account_name, proof_image, status, notes, created_by) VALUES (?, ?, ?, 'TRANSFER', ?, ?, ?, ?, 'PENDING', ?, 'Jemaah (online)')`
     ).run(
       tx.id,
       receiptNumber,

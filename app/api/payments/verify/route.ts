@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { recalcTransaction } from '@/lib/booking';
+import { tulisLedger, akunKasDefault, akunPendapatanDefault } from '@/lib/ledger';
 
 /**
  * Verifikasi pembayaran oleh admin. Endpoint ini WAJIB login (satu-satunya jalur
@@ -32,23 +33,59 @@ export async function POST(req: Request) {
 
     const now = new Date().toISOString();
 
-    if (action === 'APPROVE') {
-      db.prepare(
-        `UPDATE payment_history SET status = 'APPROVED', created_by = ?, notes = ? WHERE id = ?`
-      ).run(verifiedBy, notes || 'Pembayaran disetujui & diverifikasi', paymentId);
-    } else {
-      db.prepare(
-        `UPDATE payment_history SET status = 'REJECTED', created_by = ?, notes = ? WHERE id = ?`
-      ).run(verifiedBy, notes || 'Pembayaran ditolak', paymentId);
-    }
+    const hasil = db.transaction(() => {
+      if (action === 'APPROVE') {
+        db.prepare(`UPDATE payment_history SET status = 'APPROVED', verified_by = ?, notes = ? WHERE id = ?`)
+          .run(verifiedBy, notes || 'Pembayaran disetujui & diverifikasi', paymentId);
 
-    // Hitung ulang dari SEMUA pembayaran APPROVED (bukan dari angka lama di baris transaksi).
-    const result = recalcTransaction(payment.transaction_id);
+        /*
+         * Jurnal pembayaran dibuat DI SINI (titik persetujuan), bukan saat upload.
+         * sebelumnya hanya jalur admin/transactions yang menulis ledger, sehingga
+         * pembayaran lewat verifikasi tidak pernah masuk buku besar (selisih kas).
+         * Idempoten: kalau ledger untuk payment ini sudah ada, jangan dobel.
+         */
+        const sudahAda = db
+          .prepare('SELECT id FROM ledger WHERE payment_id = ? LIMIT 1')
+          .get(paymentId) as { id: number } | undefined;
+        if (!sudahAda) {
+          const akunKas = akunKasDefault();
+          const akunPendapatan = akunPendapatanDefault();
+          if (!akunKas || !akunPendapatan) throw new Error('Akun kas/pendapatan default tidak ditemukan di COA');
+
+          const tanggal = String(payment.created_at || now).slice(0, 10);
+          const ket = `Pembayaran ${payment.receipt_number} (${payment.payment_phase || 'DP'})`;
+
+          const ledgerId = tulisLedger(
+            { transactionId: payment.transaction_id, paymentId },
+            { coaAccountId: akunKas, entryType: 'DEBIT', amount: Number(payment.amount), description: `Kas masuk - ${ket}`, entryDate: tanggal, reference: payment.receipt_number },
+          );
+          tulisLedger(
+            { transactionId: payment.transaction_id, paymentId },
+            { coaAccountId: akunPendapatan, entryType: 'CREDIT', amount: Number(payment.amount), description: `Pendapatan paket - ${ket}`, entryDate: tanggal, reference: payment.receipt_number },
+          );
+          db.prepare('UPDATE payment_history SET ledger_id = ? WHERE id = ?').run(ledgerId, paymentId);
+        }
+      } else {
+        db.prepare(`UPDATE payment_history SET status = 'REJECTED', verified_by = ?, notes = ? WHERE id = ?`)
+          .run(verifiedBy, notes || 'Pembayaran ditolak', paymentId);
+
+        /*
+         * Bila sebelumnya sudah pernah disetujui lalu ditolak, jurnalnya harus
+         * ikut dibatalkan — kalau tidak, kas tetap tercatat padahal uangnya
+         * tidak sah. Baris ledger dihapus karena jurnal ini murni turunan
+         * payment (bukan jurnal manual) dan tautannya sudah by id.
+         */
+        db.prepare('DELETE FROM ledger WHERE payment_id = ?').run(paymentId);
+      }
+
+      // Hitung ulang dari SEMUA pembayaran APPROVED (bukan dari angka lama).
+      return recalcTransaction(payment.transaction_id);
+    })();
 
     return NextResponse.json({
       success: true,
       message: action === 'APPROVE' ? 'Pembayaran berhasil disetujui!' : 'Pembayaran berhasil ditolak.',
-      transaction: result,
+      transaction: hasil,
     });
   } catch (error: any) {
     console.error('Verify Payment Error:', error);

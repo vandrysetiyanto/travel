@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { requirePermission } from '@/lib/permissions';
+import { tulisLedger, akunKasDefault, akunPendapatanDefault } from '@/lib/ledger';
 
 initDB();
 
@@ -145,18 +146,55 @@ export async function POST(request: Request) {
       const receiptNo = 'KW-' + Math.floor(100000 + Math.random() * 900000);
       const phase = newPaid >= tx.total_amount ? 'PELUNASAN' : 'CICILAN';
 
-      db.prepare('UPDATE transactions SET paid_amount = ?, remaining_amount = ?, status = ? WHERE id = ?').run(newPaid, newRemaining, newStatus, transaction_id);
+      /*
+       * Semua tulisan dibungkus satu transaksi: saldo transaksi, riwayat
+       * pembayaran, dan buku besar harus lahir/hilang bersama. Tanpa ini,
+       * kegagalan di tengah jalan meninggalkan pembayaran tanpa jurnal.
+       */
+      const simpan = db.transaction(() => {
+        db.prepare('UPDATE transactions SET paid_amount = ?, remaining_amount = ?, status = ? WHERE id = ?')
+          .run(newPaid, newRemaining, newStatus, transaction_id);
 
-      db.prepare(`
-        INSERT INTO payment_history (transaction_id, receipt_number, amount, payment_type, payment_phase, bank_name, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(transaction_id, receiptNo, payAmount, payment_type || 'TRANSFER', phase, bank_name || '', notes || '');
+        const infoPay = db.prepare(`
+          INSERT INTO payment_history (transaction_id, receipt_number, amount, payment_type, payment_phase, bank_name, notes, status, created_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?)
+        `).run(transaction_id, receiptNo, payAmount, payment_type || 'TRANSFER', phase, bank_name || '', notes || '', auth.user?.email || 'Admin');
+        const paymentId = Number(infoPay.lastInsertRowid);
 
-      // Auto-sync payment to General Ledger (Jurnal Buku Besar) with correct schema
-      db.prepare(`
-        INSERT INTO ledger (entry_date, coa_account_id, entry_type, amount, description)
-        VALUES (?, (SELECT id FROM chart_of_accounts WHERE coa_code = '1-101'), 'DEBIT', ?, ?)
-      `).run(new Date().toISOString().split('T')[0], payAmount, 'Pembayaran Jamaah - ' + receiptNo);
+        // Buku besar: kas bertambah (DEBIT), pendapatan diakui (CREDIT).
+        // Keduanya WAJIB menunjuk id sumbernya agar bisa ditelusuri.
+        const akunKas = akunKasDefault();
+        const akunPendapatan = akunPendapatanDefault();
+        if (!akunKas || !akunPendapatan) throw new Error('Akun kas/pendapatan default tidak ditemukan di COA');
+
+        const ledgerId = tulisLedger(
+          { transactionId: transaction_id, paymentId },
+          {
+            coaAccountId: akunKas,
+            entryType: 'DEBIT',
+            amount: payAmount,
+            description: `Pembayaran jamaah - ${receiptNo}`,
+            entryDate: new Date().toISOString().split('T')[0],
+            reference: receiptNo,
+          },
+        );
+        tulisLedger(
+          { transactionId: transaction_id, paymentId },
+          {
+            coaAccountId: akunPendapatan,
+            entryType: 'CREDIT',
+            amount: payAmount,
+            description: `Pendapatan paket - ${receiptNo}`,
+            entryDate: new Date().toISOString().split('T')[0],
+            reference: receiptNo,
+          },
+        );
+        db.prepare('UPDATE payment_history SET ledger_id = ? WHERE id = ?').run(ledgerId, paymentId);
+
+        return { paymentId, ledgerId };
+      });
+
+      simpan();
 
       return NextResponse.json({ success: true, message: 'Pembayaran berhasil dicatat', receipt_number: receiptNo });
     }

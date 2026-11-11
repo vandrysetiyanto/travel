@@ -51,6 +51,36 @@ export async function POST(req: Request) {
 
     const totalPilgrims = pilgrims.length;
 
+    /*
+     * Cek bentrok jadwal SEBELUM menulis apa pun.
+     * Aturan bisnis: satu jamaah boleh umroh berkali-kali, tetapi tidak boleh
+     * beririsan waktunya — ia harus menyelesaikan perjalanan sebelumnya dulu.
+     * Identitas jamaah dipetakan lewat NIK, lalu dicocokkan ke booking_jamaah.
+     */
+    const nikDaftar = pilgrims.map((p: any) => String(p.nik).replace(/\D/g, ''));
+    const jamaahLama = db
+      .prepare(`SELECT id, nik FROM master_jamaah WHERE nik IN (${nikDaftar.map(() => '?').join(',')})`)
+      .all(...nikDaftar) as { id: number; nik: string }[];
+    if (jamaahLama.length) {
+      const { cekBentrokJadwal, pesanBentrok } = await import('@/lib/booking-jamaah');
+      const bentrok = cekBentrokJadwal(jamaahLama.map((j) => j.id), {
+        departure_date: batch.departure_date,
+        return_date: batch.return_date,
+        id: batch.id,
+      });
+      if (bentrok.length) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'JADWAL_BENTROK',
+            message: pesanBentrok(bentrok),
+            bentrok,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     // Cek sisa kuota batch
     if (batch.quota && batch.quota > 0) {
       const filled = db
@@ -119,7 +149,22 @@ export async function POST(req: Request) {
         )
         .run(bookingCode, ids[0], batch_id, totalAmount, totalAmount, notes || '', totalPilgrims);
 
-      return Number(insTx.lastInsertRowid);
+      const txIdBaru = Number(insTx.lastInsertRowid);
+
+      /*
+       * Tautkan SEMUA jamaah ke booking ini lewat id (bukan group_code).
+       * group_code tetap diisi untuk kompatibilitas tampilan lama, tetapi
+       * sumber kebenaran relasi sekarang tabel booking_jamaah.
+       */
+      const insBJ = db.prepare(
+        `INSERT INTO booking_jamaah (transaction_id, jamaah_id, peran, urutan) VALUES (?, ?, ?, ?)
+         ON CONFLICT(transaction_id, jamaah_id) DO UPDATE SET peran = excluded.peran, urutan = excluded.urutan`,
+      );
+      ids.forEach((jid, idx) => {
+        insBJ.run(txIdBaru, jid, idx === 0 ? 'LEADER' : 'ANGGOTA', idx + 1);
+      });
+
+      return txIdBaru;
     });
 
     const txId = run();
