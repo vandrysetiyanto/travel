@@ -229,10 +229,28 @@ function MasterJamaah() {
   const openAdd = () => { setForm({}); setMode('open'); };
   const openEdit = (j: any) => { setForm(j); setMode('open'); };
 
-  const mergeKeep = (p: any, patch: Record<string, string | undefined>) => {
+  const mergeKeep = (p: any, patch: Record<string, any>) => {
     const next = { ...p };
+    // Map alias kunci OCR ke field form admin
+    const keyMap: Record<string, string> = {
+      noKK: 'no_kk',
+      fullName: 'full_name',
+      birthPlace: 'birth_place',
+      birthDate: 'birth_date',
+      passportNumber: 'passport_number',
+      passportExpiry: 'passport_expiry_date',
+      passportExpiryDate: 'passport_expiry_date'
+    };
+
     for (const [k, v] of Object.entries(patch)) {
-      if (v && !next[k]) next[k] = v;
+      if (!v) continue;
+      const targetKey = keyMap[k] || k;
+      // Khusus gender atau field yang ada nilai default 'L', selalu perbarui jika d.data menyediakannya
+      if (targetKey === 'gender') {
+        next[targetKey] = v;
+      } else if (!next[targetKey]) {
+        next[targetKey] = v;
+      }
     }
     return next;
   };

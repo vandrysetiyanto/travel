@@ -1,42 +1,17 @@
+import { exec } from 'child_process';
+import util from 'util';
+import path from 'path';
+import fs from 'fs';
+
+const execPromise = util.promisify(exec);
 import { NextResponse } from 'next/server';
 import { createWorker } from 'tesseract.js';
 import sharp from 'sharp';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// OCR dokumen kependudukan Indonesia: KTP, KK, dan Paspor (MRZ).
-//
-// TIDAK dipagar sesi: dipakai formulir pendaftaran PUBLIK (/register ->
-// RegisterForm -> PilgrimCard -> OCRUploader). Endpoint ini hanya membaca gambar
-// yang diunggah lalu mengembalikan hasil parse; tidak menyentuh DB sama sekali.
-//
-// Catatan penting:
-//  - `ind.traineddata` & `eng.traineddata` tersedia di root proyek; langPath
-//    diarahkan ke situ supaya OCR OFFLINE (tidak mengunduh dari CDN jsDelivr).
-//  - Worker dibuat SEKALI lalu dipakai ulang antar-request.
-//  - PRA-PROSES WAJIB untuk foto asli: foto KTP dari HP sering hanya ~700 px
-//    lebar dan tesseract MENJATUHKAN baris teks pada resolusi itu (terbukti:
-//    baris "Nama" dan "Alamat" hilang total, sehingga field jadi kosong/salah).
-//    Upscale ke sisi panjang >= 1600 px + grayscale + normalise memulihkannya.
-//  - Aturan tata letak: LABEL dan NILAI sering di baris OCR terpisah, satu baris
-//    bisa memuat DUA kolom (mis. "Jenis Kelamin : PEREMPUAN Gol. Darah : B"),
-//    dan label bisa salah baca ("Tgl" -> "Tgi", "Kel/Desa" -> "KellDesa").
-//    Jadi pencarian nilai: boleh turun baris, kandidat tak layak DILEWATI, dan
-//    label dicocokkan dengan varian yang toleran.
-// ─────────────────────────────────────────────────────────────────────────────
-
 type DocType = 'KTP' | 'KK' | 'PASPOR';
-
-/** Jenis potongan alamat (urutan tampil: jalan, RT/RW, kelurahan, kecamatan). */
 type AddrKind = 'main' | 'rtrw' | 'kel' | 'kec';
-
 type AddrPart = { kind: AddrKind; value: string; conf: number };
 
-/**
- * Pasangan kata yang di KTP selalu ditulis terpisah, tetapi pada foto beresolusi rendah
- * sering terbaca menyatu ("TANAH RENDAH" -> "TANAHRENDAH", "AIR PUTIH" -> "AIRPUTIH").
- * Sengaja berupa daftar PASANGAN, bukan daftar kata umum: pendekatan kata umum ikut
- * memecah nama tempat yang sah dan sudah benar ("SUKAJADI", "TEGALSARI").
- */
 const GLUED_PAIRS: [string, string][] = [
   ['TANAH', 'RENDAH'], ['TANAH', 'ABANG'], ['TANAH', 'TINGGI'], ['TANAH', 'MERAH'], ['TANAH', 'PUTIH'],
   ['AIR', 'PUTIH'], ['AIR', 'HITAM'], ['AIR', 'JERNIH'], ['AIR', 'MATA'], ['AIR', 'BESAR'], ['AIR', 'KECIL'],
@@ -47,7 +22,6 @@ const GLUED_PAIRS: [string, string][] = [
   ['BUKIT', 'DURI'], ['SUNGAI', 'BAMBU'], ['SUNGAI', 'BESAR'], ['GROGOL', 'SELATAN'],
 ];
 
-/** Pecah "TANAHRENDAH" -> "TANAH RENDAH" hanya bila cocok pasangan yang dikenal. */
 function repairGluedWords(s: string): string {
   return collapse(
     (s || '')
@@ -65,7 +39,6 @@ function repairGluedWords(s: string): string {
   );
 }
 
-/** Satu baris hasil OCR beserta confidence-nya. */
 type OcrLine = { text: string; conf: number };
 
 type ParsedDoc = {
@@ -76,14 +49,12 @@ type ParsedDoc = {
   birthDate: string;
   gender: string;
   address: string;
-  /** Potongan alamat berjenis; tiap potongan dipilih dari varian dengan confidence baris tertinggi. */
   addressParts: AddrPart[];
   passportNumber: string;
   passportExpiry: string;
 };
 
 type TesseractWorker = Awaited<ReturnType<typeof createWorker>>;
-
 let workerPromise: Promise<TesseractWorker> | null = null;
 
 function getWorker(): Promise<TesseractWorker> {
@@ -93,26 +64,19 @@ function getWorker(): Promise<TesseractWorker> {
       cachePath: process.cwd(),
       logger: () => {},
     } as any).catch((err: any) => {
-      workerPromise = null; // biar request berikutnya boleh coba lagi
+      workerPromise = null;
       throw err;
     });
   }
   return workerPromise;
 }
 
-// ── pra-proses gambar ───────────────────────────────────────────────────────
-
 const MIN_LONG_EDGE = 2100;
 const MAX_LONG_EDGE = 2600;
 
-/**
- * Siapkan gambar untuk OCR: perbaiki orientasi EXIF, skala sisi panjang ke
- * ~1600–2600 px, jadikan grayscale, rentangkan kontras, dan pertajam sedikit.
- * Bila gagal (format aneh), kembalikan buffer asli — OCR masih boleh dicoba.
- */
 async function preprocessImage(buf: Buffer, minLongEdge = MIN_LONG_EDGE, maxScale = 3.0): Promise<Buffer> {
   try {
-    const img = sharp(buf, { failOn: 'none' }).rotate(); // rotate() = ikuti EXIF
+    const img = sharp(buf, { failOn: 'none' }).rotate();
     const meta = await img.metadata();
     const w = meta.width || 0;
     const h = meta.height || 0;
@@ -138,15 +102,9 @@ async function preprocessImage(buf: Buffer, minLongEdge = MIN_LONG_EDGE, maxScal
   }
 }
 
-// ── util teks ───────────────────────────────────────────────────────────────
-
 const onlyDigits = (s: string) => (s || '').replace(/\D/g, '');
 const collapse = (s: string) => (s || '').replace(/\s+/g, ' ').trim();
-
-/** Karakter hiasan/keamanan kartu yang ikut terbaca OCR (—, –, ·, ▬, ░, dsb.). */
 const DECOR = /[\u2010-\u2015\u00b7\u2022\u2027\u2500-\u257f\u25a0-\u25ff]/g;
-
-/** Buang hiasan + rapikan spasi: "——— TAMBAK REJO" -> "TAMBAK REJO". */
 const deDecor = (s: string) => collapse((s || '').replace(DECOR, ' '));
 
 const linesOf = (text: string) =>
@@ -155,16 +113,12 @@ const linesOf = (text: string) =>
     .map((l) => deDecor(l))
     .filter(Boolean);
 
-/** Kata alamat yang menandakan ekor itu MASIH bagian alamat — jangan dipotong. */
 const ADDR_WORD = /^(KEL|KEC|KELURAHAN|KECAMATAN|RT|RW|JL|JALAN|BLOK|NO|DESA|DUSUN|KAMPUNG|GANG|PERUM|GG)$/i;
 
-/** Buang ekor sampah hasil OCR (mis. "JL. PASTI CEPAT A7/66 . El" -> buang ".", "El"). */
 function stripTrailingJunk(s: string): string {
   const t = deDecor(s).split(' ').filter(Boolean);
   while (t.length && (t[t.length - 1].length < 3 || !/[A-Za-z0-9]/.test(t[t.length - 1]))) t.pop();
   let out = t.join(' ');
-  // Bila ada nomor (mis. "A7/66"), buang paling banyak 2 kata sampah yang menyusul —
-  // TAPI jangan buang bila kata itu masih bagian alamat (KEL/KEC/RT/RW/...).
   if (/\d/.test(out)) {
     const parts = out.split(' ');
     let lastNum = -1;
@@ -179,7 +133,6 @@ function stripTrailingJunk(s: string): string {
   return out;
 }
 
-/** Kata-kata label/kolom yang tidak boleh dianggap bagian dari nama. */
 const LABEL_WORDS =
   /\b(NIK|Nama|Alamat|Jenis|Kelamin|Tempat|Tgl|Tgi|Lahir|Gol|Darah|Agama|Status|Perkawinan|Kewarganegaraan|Pekerjaan|Berlaku|Hingga|KARTU|KELUARGA|Kepala|Anggota|LAKI|PEREMPUAN|PRIA|WANITA|ISLAM|KRISTEN|HINDU|BUDHA|KAWIN|BELUM|SEUMUR|HIDUP|No|FOTO|Tanda|Tangan|RT|RW)\b/gi;
 
@@ -189,7 +142,6 @@ function cleanName(raw: string): string {
   );
 }
 
-/** Layak dianggap nama orang: ada huruf, minimal 2 kata atau >=4 huruf, bukan label. */
 function looksLikeName(s: string): boolean {
   const t = collapse(s);
   if (!t || t.length < 4) return false;
@@ -199,12 +151,6 @@ function looksLikeName(s: string): boolean {
   return words[0].length >= 5;
 }
 
-/**
- * Ambil nilai sebuah label.
- * - Boleh mengambil dari baris berikutnya (label & nilai sering terpisah).
- * - Kandidat yang tidak layak DILEWATI, pencarian lanjut (penting karena satu
- *   baris bisa memuat dua kolom: "Nama Agama" pada kartu, "… Gol. Darah : B" pada KTP asli).
- */
 function valueAfterLabel(
   lines: string[],
   labelRe: RegExp,
@@ -243,25 +189,19 @@ function valueAfterLabel(
   return '';
 }
 
-/**
- * Sub-label yang MASIH bagian dari alamat, tetapi pendahuluan labelnya dibuang
- * saat dirangkai ("KEL. CILANDAK TIMUR" -> "CILANDAK TIMUR", "KelDesa TANAH RENDAH" -> "TANAH RENDAH").
- */
 const ADDR_SUBLABEL = /^(KEL\s*[\/|]?\s*DESA|KELL?DESA|KELURAHAN|KEL\.|KECAMATAN|KEC\.)\s*:?\s*/i;
-
-/** Awal field NON-alamat: di sinilah blok alamat berhenti (titik dua bisa hilang karena noise). */
 const FIELD_BREAK =
   /^(AGAMA|STATUS|PEKERJAAN|KEWARGANEGARAAN|BERLAKU|NIK|NAMA|TEMPAT|TG[LI]|JENIS|GOL|FOTO|TANDA|KARTU|ANGGOTA|NO\b|KEPALA)/i;
 
-/** Potong nilai pada label berikutnya ("CILANDAK TIMUR KEC. PASAR MINGGU" -> "CILANDAK TIMUR"). */
 function cutAtNextLabel(s: string): string {
+  // CATATAN: jangan pakai \b di akhir alternasi "KEC\." / "KEL\." — \b tidak pernah cocok
+  // setelah titik, sehingga label ber-titik tidak terpotong dan nilainya terduplikasi.
   const m = collapse(s).match(
-    /^(.*?)\s+(RT\s*[\/|]?\s*RW|RTRW|KEL\s*[\/|]?\s*DESA|KECAMATAN|KEC\.|AGAMA|STATUS|PEKERJAAN|KEWARGANEGARAAN|BERLAKU|NIK|NAMA|TEMPAT|TG[LI]|JENIS|GOL)\b/i
+    /^(.*?)\s+(RT\s*[\/|]?\s*RW|RTRW|KEL\s*[\/|]?\s*DESA|KEL\.|KECAMATAN|KEC\.|AGAMA|STATUS|PEKERJAAN|KEWARGANEGARAAN|BERLAKU|NIK|NAMA|TEMPAT|TG[LI]|JENIS|GOL)(?![A-Za-z])/i
   );
   return m ? collapse(m[1]) : collapse(s);
 }
 
-/** Sisa baris label + baris lanjutan sampai ketemu header/label berikutnya. */
 function pickAddress(lines: string[], labelRe: RegExp, stopRe: RegExp, maxNext = 5): string {
   for (let i = 0; i < lines.length; i++) {
     const m = lines[i].match(labelRe);
@@ -274,11 +214,8 @@ function pickAddress(lines: string[], labelRe: RegExp, stopRe: RegExp, maxNext =
     for (let j = i + 1; j <= Math.min(i + maxNext, lines.length - 1); j++) {
       const cand = collapse(lines[j]);
       if (!cand) continue;
-      // Akhir blok alamat: field non-alamat, RT/RW (punya pencarian sendiri), atau
-      // baris berlabel titik dua yang bukan sub-label alamat.
       if (stopRe.test(cand) || FIELD_BREAK.test(cand) || RTRW_AT_START.test(cand)) break;
       if (/^[A-Za-z][A-Za-z\/\.\s]{0,22}:/.test(cand)) break;
-      // Baris lanjutan alamat: buang label sub-alamat ("KEL." / "KelDesa" / "Kecamatan")
       const val = collapse(cand.replace(ADDR_SUBLABEL, ''));
       if (!val) continue;
       if (!parts.join(' ').toUpperCase().includes(val.toUpperCase())) parts.push(val);
@@ -288,337 +225,320 @@ function pickAddress(lines: string[], labelRe: RegExp, stopRe: RegExp, maxNext =
   return '';
 }
 
-/** Label RT/RW; OCR sering membaca "RT/RW" menjadi "BERW" atau "RTRW". */
 const RTRW_LABEL = /R\s*T\s*[\/|]?\s*R\s*W|RTIRW|BERW|BTRW|RTRW/i;
-
-/**
- * Sama seperti RTRW_LABEL tetapi harus di AWAL baris. Dipakai untuk memutuskan akhir blok
- * alamat: baris "TAMBAKREJO RT/RW 000/000" MASIH bagian alamat (jalan + RT/RW satu baris),
- * sedangkan baris "RT/RW : 000/000" adalah label tersendiri sehingga mengakhiri blok.
- */
 const RTRW_AT_START = /^\s*(?:R\s*T\s*[\/|]?\s*R\s*W|RTIRW|BERW|BTRW|RTRW)\b/i;
 
-const ADDR_STOP =
-  /^(NIK|NAMA|AGAMA|STATUS|PEKERJAAN|KEWARGANEGARAAN|BERLAKU|SEUMUR|GOL|JENIS|TEMPAT|TGL|TGI|KEPALA|FOTO|TANDA|NO\b|KARTU|ANGGOTA|DIKELUARKAN)/i;
+function extractRTRW(s: string): string {
+  const digits = s.replace(/\D/g, '');
+  if (digits.length === 6) return `RT/RW ${digits.slice(0, 3)}/${digits.slice(3, 6)}`;
 
-/**
- * Tambahkan hanya bila kata/frasa itu belum ada di alamat yang sudah tersusun
- * (mis. nilai Kecamatan sudah termuat di baris kelurahan -> jangan diulang).
- */
-function addUnlessPresent(parts: string[], candidate: string): string[] {
-  const joined = collapse(parts.join(' ')).toUpperCase();
-  const core = candidate.replace(/^(KEL|KEC)\.\s*/i, '').toUpperCase();
-  if (core && joined.includes(core)) return [];
-  return [candidate];
-}
-
-/**
- * Alamat KTP asli tersusun dari beberapa baris berlabel:
- *   Alamat : JL. PASTI CEPAT A7/66
- *   RT/RW  : 007/008
- *   Kel/Desa : PEGADUNGAN
- *   Kecamatan : KALIDERES
- * Semuanya dirangkai menjadi satu alamat. Label dicocokkan toleran karena OCR
- * sering membaca "Kel/Desa" menjadi "KellDesa".
- */
-function addressPartsOf(lines: string[], confOf: (v: string) => number = () => 0): AddrPart[] {
-  const parts: AddrPart[] = [];
-  const main = repairGluedWords(stripTrailingJunk(pickAddress(lines, /ALAMAT/i, ADDR_STOP)));
-  if (main) parts.push({ kind: 'main', value: main, conf: confOf(main) });
-
-  const rtrw = valueAfterLabel(lines, RTRW_LABEL, {
-    reject: ADDR_STOP,
-    maxNext: 1,
-    scrub: stripTrailingJunk,
-  });
-  if (rtrw && /\d/.test(rtrw)) {
-    let v = collapse(rtrw).replace(/^[^0-9]*/, '');
-    const d6 = v.match(/^(\d{3})\s*[\/|]?\s*(\d{3})$/);
-    if (d6) v = `${d6[1]}/${d6[2]}`;
-    parts.push({ kind: 'rtrw', value: 'RT/RW ' + v, conf: confOf(rtrw) });
+  let m = s.match(/(?:RT\s*[\/|]?\s*RW|BERW|BTRW|RTRW)\s*:?\s*(\d{1,3})\s*[\/|;,\- ]\s*(\d{1,3})/i);
+  if (!m) m = s.match(/\b(\d{1,3})\s*[\/|]\s*(\d{1,3})\b/);
+  if (m) {
+    const r = m[1].padStart(3, '0');
+    const w = m[2].padStart(3, '0');
+    return `RT/RW ${r}/${w}`;
   }
-
-  const kel = valueAfterLabel(lines, /KEL\s*[\/|]?\s*DESA|KELL?DESA|KELURAHAN|KEL\.?\s*DESA/i, {
-    reject: ADDR_STOP,
-    maxNext: 1,
-    scrub: (s) => stripTrailingJunk(cutAtNextLabel(s)),
-  });
-  if (kel && looksLikeName(kel)) {
-    parts.push({ kind: 'kel', value: 'KEL. ' + repairGluedWords(kel), conf: confOf(kel) });
-  }
-
-  const kec = valueAfterLabel(lines, /KECAMATAN|KEC\.\s/i, {
-    reject: ADDR_STOP,
-    maxNext: 1,
-    scrub: (s) => stripTrailingJunk(cutAtNextLabel(s)),
-  });
-  if (kec && looksLikeName(kec)) {
-    parts.push({ kind: 'kec', value: 'KEC. ' + repairGluedWords(kec), conf: confOf(kec) });
-  }
-
-  return parts;
-}
-
-/** Alamat gabungan, tetapi tiap potongan boleh diambil dari hasil OCR berbeda. */
-function joinAddress(parts: Array<AddrPart | string>): string {
-  const out: string[] = [];
-  for (const p of parts) {
-    const s = collapse(typeof p === 'string' ? p : p.value);
-    if (!s) continue;
-    const core = s.replace(/^(KEL|KEC)\.\s*/i, '').toUpperCase();
-    if (core && out.join(' ').toUpperCase().includes(core)) continue; // jangan ulang
-    out.push(s);
-  }
-  return collapse(out.join(' '));
-}
-
-/** dd-mm-yyyy (atau dd/mm/yyyy, dd.mm.yyyy) -> yyyy-mm-dd. '' kalau tidak valid. */
-function parseDMY(raw: string): string {
-  const m = (raw || '').match(/(\d{1,2})\s*[-/.\s]\s*(\d{1,2})\s*[-/.\s]\s*(\d{2,4})/);
-  if (!m) return '';
-  let d = parseInt(m[1], 10);
-  let mo = parseInt(m[2], 10);
-  let y = parseInt(m[3], 10);
-  if (y < 100) y += y > 30 ? 1900 : 2000;
-  if (mo > 12 && d <= 12) {
-    const t = d;
-    d = mo;
-    mo = t;
-  }
-  if (d < 1 || d > 31 || mo < 1 || mo > 12 || y < 1900 || y > 2100) return '';
-  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-}
-
-/** 'L' / 'P' / ''. Cek PEREMPUAN lebih dulu (header bisa memuat "LAKI-LAKI"). */
-function detectGender(text: string): string {
-  const t = (text || '').toUpperCase();
-  if (/PEREMPUAN|WANITA/.test(t)) return 'P';
-  if (/LAKI\s*-?\s*LAKI|PRIA/.test(t)) return 'L';
   return '';
 }
 
-/**
- * Cari 16 digit (NIK / No. KK), toleran format cetak berspasi ("3204 1234 5678 0001").
- * JANGAN ambil grup capture dari pola awalan-provinsi (grup itu cuma prefix "32").
- */
-function findId16(text: string, labelRes: RegExp[], preferNikPattern: boolean): string {
-  for (const lr of labelRes) {
-    const re = new RegExp(lr.source + '[^0-9]{0,24}(\\d[\\d\\s.\\-]{14,24}\\d)', 'i');
-    const m = text.match(re);
-    if (m) {
-      const dig = onlyDigits(m[1]);
-      if (dig.length >= 16) return dig.slice(0, 16);
+function findId16(
+  text: string,
+  preferredLabelRes: RegExp[] = [],
+  rejectKK = false
+): string {
+  const lines = linesOf(text);
+  for (const lRes of preferredLabelRes) {
+    for (let i = 0; i < lines.length; i++) {
+      if (!lRes.test(lines[i])) continue;
+      for (let j = i; j <= Math.min(i + 2, lines.length - 1); j++) {
+        const dig = onlyDigits(lines[j]);
+        if (dig.length >= 15 && dig.length <= 17) return dig.slice(0, 16);
+      }
     }
   }
-  const joined = text.replace(/[ \t]/g, '');
-  if (preferNikPattern) {
-    const nik = joined.match(/(?:1[1-9]|21|[37][1-6]|5[1-3]|6[1-5]|[89][12])\d{14}/);
-    if (nik) return nik[0];
+
+  const all16 = (text.match(/\b\d{16}\b/g) || []);
+  if (all16.length === 1) return all16[0];
+
+  const candLines = lines.filter((l) => {
+    if (rejectKK && /KARTU\s*KELUARGA|NO\.?\s*KK/i.test(l)) return false;
+    return /\d/.test(l);
+  });
+  for (const l of candLines) {
+    const dig = onlyDigits(l);
+    if (dig.length >= 15 && dig.length <= 17) return dig.slice(0, 16);
   }
-  const any16 = joined.match(/\d{16}/);
-  return any16 ? any16[0] : '';
+  return all16[0] || '';
 }
 
-const emptyDoc = (): ParsedDoc => ({
-  nik: '',
-  noKK: '',
-  fullName: '',
-  birthPlace: '',
-  birthDate: '',
-  gender: '',
-  address: '',
-  addressParts: [],
-  passportNumber: '',
-  passportExpiry: '',
-});
-
-// ── parser per jenis dokumen ────────────────────────────────────────────────
-
-const NAME_REJECT =
-  /^(NIK|ALAMAT|JENIS|TEMPAT|TGL|TGI|GOL|AGAMA|ISLAM|KRISTEN|HINDU|BUDHA|STATUS|PERKAWINAN|PEKERJAAN|KEWARGANEGARAAN|BERLAKU|SEUMUR|FOTO|TANDA|KARTU|ANGGOTA)/i;
-const NAME_SCRUB_REJECT = /^(KARTU|KELUARGA|KEPALA|NAMA KEPALA)/i;
-
-/** Baris label pada KTP tidak boleh mengandung "Kepala Keluarga" (itu KK). */
-const KTP_NAME_LABEL = /NAMA(?!\s*KEPALA\s*KELUARGA)/i;
-
-/** Label Tempat/Tgl Lahir; OCR sering membaca "Tgl" menjadi "Tgi". */
-const TTL_LABEL = /(TEMPAT\s*[\/|]?\s*TG[LI]\.?\s*LAHIR|TEMPAT\s*[\/|]\s*|TG[LI]\.?\s*LAHIR)/i;
-
-function parseKTP(text: string, ocrLines: OcrLine[] = []): ParsedDoc {
-  const d = emptyDoc();
+function parseKTP(text: string, vlines?: OcrLine[]): ParsedDoc {
   const lines = linesOf(text);
-
-  /** Confidence baris asal sebuah nilai (untuk memilih bacaan terbaik antar-skala). */
-  const confOf = (value: string): number => {
-    if (!ocrLines.length || !value) return 0;
-    const toks = (s: string) =>
-      collapse(s)
-        .toUpperCase()
-        .replace(/[^A-Z0-9 ]/g, ' ')
-        .split(/\s+/)
-        .filter((w) => w.length >= 3);
-    const vt = new Set(toks(value));
-    if (!vt.size) return 0;
-    const need = Math.min(2, vt.size);
-    let best = 0;
-    for (const l of ocrLines) {
-      const hit = toks(l.text).filter((w) => vt.has(w)).length;
-      if (hit >= need && l.conf > best) best = l.conf;
-    }
-    return best;
+  const doc: ParsedDoc = {
+    nik: '',
+    noKK: '',
+    fullName: '',
+    birthPlace: '',
+    birthDate: '',
+    gender: 'L',
+    address: '',
+    addressParts: [],
+    passportNumber: '',
+    passportExpiry: '',
   };
 
-  d.nik = findId16(text, [/NIK/i], true);
+  const getConf = (re: RegExp) => {
+    if (!vlines) return 60;
+    const hit = vlines.find((l) => re.test(deDecor(l.text)));
+    return hit ? Math.round(hit.conf) : 60;
+  };
 
-  d.fullName = valueAfterLabel(lines, KTP_NAME_LABEL, {
-    scrub: cleanName,
-    reject: NAME_REJECT,
-    accept: (s) => looksLikeName(s) && !NAME_SCRUB_REJECT.test(s),
+  doc.nik = findId16(text, [/NIK/i, /NOMOR/i], true);
+
+  doc.fullName = valueAfterLabel(lines, /^NAMA\b/i, {
     maxNext: 3,
+    reject: /PROVINSI|KABUPATEN|KOTA|NIK|GOL|DARAH|AGAMA|STATUS/i,
+    scrub: cleanName,
+    accept: looksLikeName,
   });
 
-  // Tempat/Tgl Lahir: label sering di baris sendiri, nilai di baris berikutnya.
-  const ttl = valueAfterLabel(lines, TTL_LABEL, {
-    reject: /^(JENIS|KELAMIN|GOL|ALAMAT|AGAMA|STATUS|NIK|ISLAM|RT|RW)/i,
+  const ttlRaw = valueAfterLabel(lines, /TEMPAT\s*[\/|]?\s*TG[LI]\s*LAHIR/i, {
+    maxNext: 2,
+    reject: /NIK|NAMA|JENIS|GOL|AGAMA|STATUS|PEKERJAAN|KEWARGANEGARAAN/i,
   });
-  d.birthDate = parseDMY(ttl);
-  if (ttl) d.birthPlace = cleanName(ttl.split(/\d/)[0].replace(/[,:;]/g, ' '));
 
-  d.gender = detectGender(text);
-  d.addressParts = addressPartsOf(lines, confOf);
-  d.address = joinAddress(d.addressParts);
+  if (ttlRaw) {
+    const parts = ttlRaw.split(/,|\b(?=\d)/);
+    if (parts.length >= 2) {
+      let bp = parts[0].replace(/STATUS|PERKAWINAN|AGAMA|GOL|DARAH|JENIS|KELAMIN/gi, '').replace(/[^A-Za-z\s]/g, '');
+      doc.birthPlace = collapse(bp).toUpperCase();
+      const dStr = parts.slice(1).join(' ');
+      const m = dStr.match(/(\d{1,2})[\s\-.\/]+([0-1]?\d|JAN|FEB|MAR|APR|MEI|JUN|JUL|AGU|SEP|OKT|NOV|DES)[\s\-.\/]+(\d{4})/i);
+      if (m) {
+        let [_, d, mon, y] = m;
+        d = d.padStart(2, '0');
+        const months: Record<string, string> = {
+          JAN: '01', FEB: '02', MAR: '03', APR: '04', MEI: '05', JUN: '06',
+          JUL: '07', AGU: '08', SEP: '09', OKT: '10', NOV: '11', DES: '12'
+        };
+        mon = months[mon.toUpperCase()] || mon.padStart(2, '0');
+        doc.birthDate = `${y}-${mon}-${d}`;
+      }
+    } else {
+      const m = ttlRaw.match(/(\d{1,2})[\s\-.\/]+([0-1]?\d|JAN|FEB|MAR|APR|MEI|JUN|JUL|AGU|SEP|OKT|NOV|DES)[\s\-.\/]+(\d{4})/i);
+      if (m) {
+        let [_, d, mon, y] = m;
+        d = d.padStart(2, '0');
+        const months: Record<string, string> = {
+          JAN: '01', FEB: '02', MAR: '03', APR: '04', MEI: '05', JUN: '06',
+          JUL: '07', AGU: '08', SEP: '09', OKT: '10', NOV: '11', DES: '12'
+        };
+        mon = months[mon.toUpperCase()] || mon.padStart(2, '0');
+        doc.birthDate = `${y}-${mon}-${d}`;
+        doc.birthPlace = collapse(ttlRaw.slice(0, m.index).replace(/[^A-Za-z\s]/g, ''));
+      } else {
+        doc.birthPlace = collapse(ttlRaw.replace(/[^A-Za-z\s]/g, ''));
+      }
+    }
+  }
 
-  return d;
+  if (/PEREMPUAN|WANITA|FEMALE/i.test(text)) {
+    doc.gender = 'P';
+  } else if (/LAKI/i.test(text)) {
+    doc.gender = 'L';
+  }
+
+  let mainAddr = stripTrailingJunk(pickAddress(lines, /^ALAMAT\b/i, RTRW_LABEL, 3));
+  if (!mainAddr) {
+    // Fallback: KTP tanpa label "ALAMAT" (foto terpotong / label tak terbaca).
+    // Ambil bagian sebelum RT/RW pada baris mana pun, mis. "TAMBAKREJO RT/RW 000/000".
+    for (const l of lines) {
+      if (!RTRW_LABEL.test(l)) continue;
+      const before = stripTrailingJunk(collapse(l.split(RTRW_LABEL)[0].replace(ADDR_SUBLABEL, '')));
+      if (before.length < 3) continue;
+      if (/^(ALAMAT|NIK|NAMA|KEL|KEC|RT|RW|TEMPAT|TGL|JENIS|GOL|AGAMA|STATUS|PEKERJAAN|KEWARGANEGARAAN)\b/i.test(before)) continue;
+      if (!/[A-Za-z]{3,}/.test(before)) continue;
+      mainAddr = before;
+      break;
+    }
+  }
+  // Fallback jalan: sebagian foto (rapat/miring) menaruh baris jalan SEBELUM label "Alamat",
+  // sehingga pickAddress melewatkannya. Kalau alamat utama belum punya penanda jalan, cari di mana pun.
+  const STREET_RE = /^(JL\.?|JALAN|GG\.?|GANG|BLOK|PERUM|DUSUN|KAMPUNG|KP\.?|DESA|PERUMAHAN)\b/i;
+  if (!mainAddr || !STREET_RE.test(collapse(mainAddr))) {
+    for (const l of lines) {
+      const c = collapse(l).replace(ADDR_SUBLABEL, '');
+      if (!STREET_RE.test(c)) continue;
+      const before = stripTrailingJunk(collapse(c.split(RTRW_LABEL)[0]));
+      if (before.length < 3 || before.length > 90) continue;
+      if (!/[A-Za-z]{3,}/.test(before)) continue;
+      mainAddr = before;
+      break;
+    }
+  }
+
+  let rtrwStr = '';
+  for (const l of lines) {
+    if (RTRW_LABEL.test(l)) {
+      rtrwStr = extractRTRW(l);
+      if (rtrwStr) break;
+    }
+  }
+
+  const kelStr = valueAfterLabel(lines, /KEL\s*[\/|]?\s*DESA|KELURAHAN|KEL\./i, {
+    maxNext: 2,
+    scrub: (s) => stripTrailingJunk(cutAtNextLabel(s.replace(ADDR_SUBLABEL, ''))),
+  });
+
+  const kecStr = valueAfterLabel(lines, /KECAMATAN|KEC\./i, {
+    maxNext: 2,
+    scrub: (s) => stripTrailingJunk(cutAtNextLabel(s.replace(ADDR_SUBLABEL, ''))),
+  });
+
+  // Buang pengulangan: nilai kel/kec yang sudah terserap ke alamat utama.
+  const stripDup = (main: string, value: string): string => {
+    const v = collapse(value);
+    if (!main || !v) return main;
+    const M = main.toUpperCase();
+    for (const needle of [`KEL. ${v}`, `KEL ${v}`, `KEC. ${v}`, `KEC ${v}`]) {
+      const i = M.indexOf(needle.toUpperCase());
+      if (i > 0) return collapse(main.slice(0, i));
+    }
+    const j = M.indexOf(v.toUpperCase());
+    if (j > 0) return collapse(main.slice(0, j));
+    return main;
+  };
+  let mainClean = mainAddr;
+  if (kecStr) mainClean = stripDup(mainClean, kecStr);
+  if (kelStr) mainClean = stripDup(mainClean, kelStr);
+  mainAddr = mainClean;
+
+  const parts: AddrPart[] = [];
+  if (mainAddr) parts.push({ kind: 'main', value: repairGluedWords(mainAddr), conf: getConf(/^ALAMAT\b/i) });
+  if (rtrwStr) parts.push({ kind: 'rtrw', value: rtrwStr, conf: getConf(RTRW_LABEL) });
+  if (kelStr) parts.push({ kind: 'kel', value: repairGluedWords(kelStr), conf: getConf(/KEL\s*[\/|]?\s*DESA|KELURAHAN/i) });
+  if (kecStr) parts.push({ kind: 'kec', value: repairGluedWords(kecStr), conf: getConf(/KECAMATAN|KEC\./i) });
+
+  doc.addressParts = parts;
+  doc.address = joinAddress(parts);
+
+  return doc;
 }
 
 function parseKK(text: string): ParsedDoc {
-  const d = emptyDoc();
   const lines = linesOf(text);
+  const doc: ParsedDoc = {
+    nik: '',
+    noKK: '',
+    fullName: '',
+    birthPlace: '',
+    birthDate: '',
+    gender: 'L',
+    address: '',
+    addressParts: [],
+    passportNumber: '',
+    passportExpiry: '',
+  };
 
-  d.noKK = findId16(text, [/NO\.?\s*KK/i, /NOMOR\s*KK/i, /KARTU\s*KELUARGA/i], false);
+  const all16 = text.match(/\b\d{16}\b/g) || [];
+  const kkLine = lines.find((l) => /KARTU\s*KELUARGA|NO\.?\s*KK/i.test(l));
+  if (kkLine) {
+    const dig = onlyDigits(kkLine);
+    if (dig.length === 16) doc.noKK = dig;
+  }
+  if (!doc.noKK && all16.length) doc.noKK = all16[0] || '';
+  if (all16.length > 1) doc.nik = all16.find((x) => x !== doc.noKK) || '';
 
-  const joined = text.replace(/[ \t]/g, '');
-  const all16 = Array.from(new Set(joined.match(/\d{16}/g) || []));
-  if (!d.noKK && all16.length) d.noKK = all16[0];
-
-  // NIK kepala keluarga = 16 digit pertama yang BUKAN nomor KK.
-  d.nik = all16.find((x) => x !== d.noKK) || '';
-
-  d.fullName = valueAfterLabel(lines, /NAMA\s*KEPALA\s*KELUARGA|KEPALA\s*KELUARGA/i, {
+  doc.fullName = valueAfterLabel(lines, /KEPALA\s*KELUARGA|NAMA\s*LENGKAP/i, {
+    maxNext: 2,
     scrub: cleanName,
-    reject: NAME_REJECT,
-    accept: (s) => looksLikeName(s),
-    maxNext: 3,
+    accept: looksLikeName,
   });
 
-  d.address = pickAddress(
-    lines,
-    /ALAMAT/i,
-    /^(NO\b|NAMA\b|NIK\b|JENIS|STATUS|AGAMA|KEPALA|KARTU|ANGGOTA|DIKELUARKAN)/i
-  );
-
-  // Jenis kelamin: dari baris tabel yang memuat NIK kepala keluarga bila ada.
-  const row = d.nik ? lines.find((l) => l.replace(/[ \t]/g, '').includes(d.nik)) : '';
-  d.gender = detectGender(row || '') || detectGender(text);
-
-  // TIDAK mengambil tanggal apa pun dari badan KK: tanggal di KK (mis. tanggal
-  // dikeluarkan) bukan tanggal lahir jemaah -> lebih baik kosong daripada salah.
-  const ttl = valueAfterLabel(lines, TTL_LABEL);
-  if (ttl) {
-    d.birthDate = parseDMY(ttl);
-    d.birthPlace = cleanName(ttl.split(/\d/)[0].replace(/[,:;]/g, ' '));
+  const mainAddr = stripTrailingJunk(pickAddress(lines, /^ALAMAT\b/i, RTRW_LABEL, 3));
+  if (mainAddr) {
+    doc.addressParts = [{ kind: 'main', value: repairGluedWords(mainAddr), conf: 80 }];
+    doc.address = mainAddr;
   }
 
-  return d;
+  return doc;
 }
-
-/** Baris MRZ: banyak karakter, tanpa spasi, hampir semua A-Z/0-9/< (toleran "PS" hasil OCR). */
-const MRZ_LINE = /^[A-Z0-9<]{30,}$/;
-/** Baris dokumen MRZ (baris-1 paspor); "P<" sering terbaca "PS"/"PK". */
-const MRZ_DOC_LINE = /^P[A-Z<][A-Z]{3}[A-Z<]{5,}$/;
 
 function parsePassport(text: string): ParsedDoc {
-  const d = emptyDoc();
+  const doc: ParsedDoc = {
+    nik: '',
+    noKK: '',
+    fullName: '',
+    birthPlace: '',
+    birthDate: '',
+    gender: 'L',
+    address: '',
+    addressParts: [],
+    passportNumber: '',
+    passportExpiry: '',
+  };
 
-  // MRZ baris-2: [0..9) nomor paspor | [9) checksum | [10..13) nationality |
-  // [13..19) DOB | [19) checksum | [20) sex | [21..27) expiry
-  // PENTING: jangan mengandalkan urutan baris atau `<` yang mulus — OCR sering
-  // membaca "P<" menjadi "PS"/"PK", jadi baris-2 dikenali dari POLA TANGGAL.
-  const compact = text.split('\n').map((l) => l.replace(/\s/g, '').toUpperCase());
-  const mrzLines = compact.filter((l) => MRZ_LINE.test(l));
-  const line2 =
-    mrzLines.find((l) => /\d{6}\d[MF<]\d{6}/.test(l)) || mrzLines[1] || '';
-  const line1 =
-    mrzLines.find((l) => l !== line2 && MRZ_DOC_LINE.test(l)) ||
-    mrzLines.find((l) => l !== line2) ||
-    '';
+  const mrzLines = linesOf(text).filter((l) => /P<[A-Z0-9<]{30,}/i.test(l) || /^[A-Z0-9<]{40,50}$/.test(l));
+  if (mrzLines.length >= 2) {
+    const line1 = mrzLines[0].replace(/\s+/g, '');
+    const line2 = mrzLines[1].replace(/\s+/g, '');
 
-  const y2 = (s: string) => (parseInt(s.slice(0, 2), 10) > 30 ? '19' : '20');
+    const namePart = line1.slice(5).split('<<')[0].replace(/</g, ' ');
+    if (namePart) doc.fullName = collapse(namePart);
 
-  if (line1) {
-    const namePart = line1.slice(5).split('<<');
-    const surname = (namePart[0] || '').replace(/</g, ' ').trim();
-    const given = (namePart[1] || '').replace(/</g, ' ').trim();
-    d.fullName = cleanName([given, surname].filter(Boolean).join(' '));
-  }
+    doc.passportNumber = line2.slice(0, 9).replace(/</g, '');
+    doc.gender = line2.slice(20, 21) === 'F' ? 'P' : 'L';
 
-  if (line2) {
-    const pass = line2.match(/^([A-Z0-9<]{9})/);
-    if (pass) d.passportNumber = pass[1].replace(/</g, '').trim();
+    const dob = line2.slice(13, 19);
+    if (/^\d{6}$/.test(dob)) {
+      const yr = parseInt(dob.slice(0, 2), 10);
+      const fullYr = yr > 40 ? 1900 + yr : 2000 + yr;
+      doc.birthDate = `${fullYr}-${dob.slice(2, 4)}-${dob.slice(4, 6)}`;
+    }
 
-    // Checksum WAJIB dilewati (\d), kalau tidak DOB tergeser 1 digit.
-    const gm = line2.match(/(\d{6})\d([MF<])(\d{6})/);
-    if (gm) {
-      d.gender = gm[2] === 'F' ? 'P' : 'L';
-      const dob = gm[1];
-      d.birthDate = `${y2(dob)}${dob.slice(0, 2)}-${dob.slice(2, 4)}-${dob.slice(4, 6)}`;
-      const exp = gm[3];
-      d.passportExpiry = `${y2(exp)}${exp.slice(0, 2)}-${exp.slice(2, 4)}-${exp.slice(4, 6)}`;
+    const exp = line2.slice(21, 27);
+    if (/^\d{6}$/.test(exp)) {
+      doc.passportExpiry = `20${exp.slice(0, 2)}-${exp.slice(2, 4)}-${exp.slice(4, 6)}`;
     }
   }
-
-  if (!d.passportNumber) {
-    const m = text.match(/(?:PASSPORT\s*NO\.?|NO\.?\s*PASPOR)[^A-Z0-9]*([A-Z]{1,2}\d{6,9})/i);
-    if (m) d.passportNumber = m[1].toUpperCase();
-  }
-  if (!d.fullName) {
-    d.fullName = valueAfterLabel(linesOf(text), /(NAMA|NAME)/i, {
-      scrub: cleanName,
-      accept: looksLikeName,
-    });
-  }
-  if (!d.birthDate) {
-    const ttl = valueAfterLabel(linesOf(text), /(TANGGAL\s*LAHIR|DATE\s*OF\s*BIRTH|LAHIR)/i);
-    d.birthDate = parseDMY(ttl);
-  }
-  if (!d.gender) d.gender = detectGender(text);
-
-  return d;
+  return doc;
 }
 
-// ── deteksi jenis dokumen (bila pemanggil TIDAK mengirim docType) ────────────
-
-function normalizeDocType(raw: unknown): DocType | '' {
-  const s = String(raw || '').trim().toUpperCase();
-  if (s === 'KTP' || s === 'KK') return s as DocType;
-  if (s === 'PASPOR' || s === 'PASSPORT') return 'PASPOR';
-  return '';
+function joinAddress(parts: AddrPart[]): string {
+  return parts.map((p) => p.value).join(' ').trim();
 }
 
-function detectDocType(text: string): DocType | '' {
-  const compact = text.split('\n').map((l) => l.replace(/\s/g, '').toUpperCase());
-  if (compact.some((l) => /^P<[A-Z0-9<]{8,}$/.test(l))) return 'PASPOR';
-  const t = text.toUpperCase();
-  if (
-    /KARTU\s*KELUARGA/.test(t) ||
-    /NO\.?\s*KK\b/.test(t) ||
-    /KEPALA\s*KELUARGA/.test(t) ||
-    /ANGGOTA\s*KELUARGA/.test(t)
-  ) {
-    return 'KK';
-  }
-  if (/\bNIK\b/.test(t) || /KTP|E-KTP/.test(t) || /\bPROVINSI\b/.test(t)) return 'KTP';
-  return '';
+function scoreOf(doc: ParsedDoc): number {
+  let s = 0;
+  if (doc.nik) s += 3;
+  if (doc.noKK) s += 3;
+  if (doc.fullName) s += 3;
+  if (doc.birthPlace) s += 2;
+  if (doc.birthDate) s += 2;
+  if (doc.address) s += 3;
+  if (doc.passportNumber) s += 4;
+  return s;
+}
+
+function emptyDoc(): ParsedDoc {
+  return {
+    nik: '',
+    noKK: '',
+    fullName: '',
+    birthPlace: '',
+    birthDate: '',
+    gender: 'L',
+    address: '',
+    addressParts: [],
+    passportNumber: '',
+    passportExpiry: '',
+  };
+}
+
+function detectDocType(text: string): DocType {
+  if (/P<[A-Z0-9<]{30,}/i.test(text) || /PASSPORT|PASPOR/i.test(text)) return 'PASPOR';
+  if (/KARTU\s*KELUARGA/i.test(text)) return 'KK';
+  return 'KTP';
 }
 
 const SCORE_FIELDS: (keyof ParsedDoc)[] = [
@@ -628,78 +548,157 @@ const SCORE_FIELDS: (keyof ParsedDoc)[] = [
   'birthPlace',
   'birthDate',
   'gender',
-  'address',
   'passportNumber',
   'passportExpiry',
 ];
-
-const scoreOf = (p: ParsedDoc) =>
-  SCORE_FIELDS.reduce((n, k) => n + (String(p[k] || '').trim() ? 1 : 0), 0);
-
-// ── handler ─────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
     const file = formData.get('image') as File | null;
-    const requested = normalizeDocType(formData.get('docType'));
+    const requested = (formData.get('docType') as string)?.toUpperCase() || '';
 
     if (!file) {
-      return NextResponse.json({ success: false, message: 'File gambar tidak ditemukan' }, { status: 400 });
+      return NextResponse.json({ success: false, message: 'File gambar wajib diunggah.' }, { status: 400 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    const ocr = async (input: Buffer): Promise<{ text: string; confidence: number; lines: OcrLine[] }> => {
-      const run = async () => {
-        const worker = await getWorker();
-        const ret = await worker.recognize(input, {}, { text: true, blocks: true } as any);
-        const data: any = ret.data;
-        const lines: OcrLine[] = [];
-        for (const bl of data.blocks || []) {
-          for (const p of bl.paragraphs || []) {
-            for (const l of p.lines || []) {
-              const t = (l.text || '').trim();
-              if (t) lines.push({ text: t, conf: Number(l.confidence) || 0 });
-            }
+    // ── STEP 1: 9router (model `free`) via /root/projects/ocr-service/ocr9router.py ──
+    const tempDir = path.join(process.cwd(), 'tmp');
+    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+    
+    const tempFilePath = path.join(tempDir, `ocr_${Date.now()}_${Math.random().toString(36).substring(7)}.png`);
+    fs.writeFileSync(tempFilePath, buffer);
+
+    let pythonResult: any = null;
+    try {
+      const pythonScript = '/root/projects/ocr-service/ocr9router.py';
+      const { stdout } = await execPromise(`python3 ${pythonScript} "${tempFilePath}" --json --engine 9router --models gemini/gemini-3.5-flash-lite,gemini/gemini-3.1-flash-lite-preview,free --timeout 20 --retries 1`, { timeout: 60000 });
+      if (stdout) {
+        pythonResult = JSON.parse(stdout);
+      }
+    } catch (pyErr) {
+      console.warn('9router OCR error or timeout:', pyErr);
+    } finally {
+      if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+    }
+
+    if (pythonResult && pythonResult.success && pythonResult.text) {
+      const rawText = pythonResult.text;
+      const detected = detectDocType(rawText);
+
+      // Jenis dokumen yang teksnya benar-benar mengandung penanda-nya. Kalau pemakai memilih
+      // PASPOR tetapi teksnya jelas KK, PASPOR dibuang dari pencalonan (dulu hasilnya kosong).
+      const evidenceOf = (t: DocType): boolean => {
+        if (t === 'KK') return /KARTU\s*KELUARGA|NO\.?\s*KK|KEPALA\s*KELUARGA/i.test(rawText);
+        if (t === 'PASPOR') return /P<[A-Z0-9<]{30,}/i.test(rawText) || /PASSPORT|PASPOR/i.test(rawText);
+        return true; // KTP sebagai jenis dasar
+      };
+
+      // Urutan pencalonan: jenis terdeteksi -> jenis yang diminta -> sisanya.
+      const order: DocType[] = [];
+      for (const t of [detected, requested, 'KTP', 'KK', 'PASPOR'] as (DocType | '')[]) {
+        if (t && !order.includes(t)) order.push(t);
+      }
+      const candid = order.filter(evidenceOf);
+      const types = candid.length ? candid : order;
+
+      let best = emptyDoc();
+      let bestType: DocType = types[0];
+      let bestScore = -1;
+      for (const t of types) {
+        const parsed = t === 'KK' ? parseKK(rawText) : t === 'PASPOR' ? parsePassport(rawText) : parseKTP(rawText);
+        const sc = scoreOf(parsed);
+        if (sc > bestScore) {
+          best = parsed;
+          bestScore = sc;
+          bestType = t;
+        }
+      }
+
+      // Isi field yang masih kosong dari parser lain (mis. noKK untuk jenis KK).
+      const altDocs: Record<string, ParsedDoc> = {};
+      for (const t of types) {
+        altDocs[t] = t === bestType ? best : (t === 'KK' ? parseKK(rawText) : t === 'PASPOR' ? parsePassport(rawText) : parseKTP(rawText));
+      }
+      for (const f of SCORE_FIELDS) {
+        if (f === 'address' || f === 'gender') continue;
+        if (String((best as any)[f] || '').trim()) continue;
+        for (const t of types) {
+          const v = (altDocs[t] as any)[f];
+          if (String(v || '').trim()) {
+            (best as any)[f] = v;
+            break;
           }
         }
-        return {
-          text: data.text || '',
-          confidence: Number(data.confidence) || 0,
-          lines,
-        };
-      };
-      try {
-        return await run();
-      } catch (err) {
-        workerPromise = null; // worker mungkin mati -> worker baru, coba sekali lagi
-        return await run();
       }
-    };
+      if (!best.address) {
+        for (const t of types) {
+          if (String(altDocs[t].address || '').trim()) {
+            best.address = altDocs[t].address;
+            best.addressParts = altDocs[t].addressParts;
+            break;
+          }
+        }
+      }
 
-    // OCR multi-varian. Dua alasan:
-    //  (a) pra-proses menolong foto resolusi kecil, tetapi bisa merusak dokumen lain
-    //      (zona MRZ paspor: "P<" jadi "PS"), jadi gambar SUMBER tetap diuji;
-    //  (b) pada foto kecil, tesseract TIDAK konsisten antar-baris: skala ~1600 px
-    //      kadang membaca "TANAH RENDAH"/"RT/RW 007/008" yang hilang di skala lain,
-    //      dan sebaliknya. Jadi beberapa skala diuji lalu hasilnya DIGABUNG per-field.
-    const variants: Buffer[] = [buffer];
-    for (const [minLong, maxScale] of [[1600, 2.4], [1850, 2.7], [2100, 3.0]] as [number, number][]) {
-      const v = await preprocessImage(buffer, minLong, maxScale);
-      if (v.length === buffer.length) continue; // tidak berubah
-      if (variants.some((x) => x.length === v.length && x.equals(v))) continue; // sama
-      variants.push(v);
+      const docTypeToUse = bestType;
+      const parsed = best;
+
+      parsed.fullName = collapse(parsed.fullName);
+      parsed.address = collapse(parsed.address);
+      parsed.birthPlace = collapse(parsed.birthPlace);
+      if (!parsed.gender) parsed.gender = 'L';
+
+      const normalizedData = {
+        ...parsed,
+        no_kk: parsed.noKK,
+        full_name: parsed.fullName,
+        birth_place: parsed.birthPlace,
+        birth_date: parsed.birthDate,
+        passport_number: parsed.passportNumber,
+        passport_expiry_date: parsed.passportExpiry,
+        passport_expiry: parsed.passportExpiry,
+        docType: docTypeToUse,
+        detectedDocType: detected,
+        parserScore: bestScore,
+        rawText,
+        engineUsed: pythonResult.engine || '9router',
+        modelUsed: pythonResult.model || '',
+      };
+
+      return NextResponse.json({
+        success: true,
+        data: normalizedData,
+      });
     }
+
+    // ── STEP 2: Fallback ke Tesseract JS Engine (Lokal Node) ──
+    const vNormal = await preprocessImage(buffer, MIN_LONG_EDGE, 3.0);
+    const vLarge = await preprocessImage(buffer, 2500, 4.0);
+    const variants = [vNormal, vLarge, buffer];
+
+    const worker = await getWorker();
+    const ocr = async (buf: Buffer) => {
+      const res = await worker.recognize(buf);
+      const lines: OcrLine[] = (((res.data as any).lines || [])).map((l: any) => ({
+        text: l.text,
+        conf: l.confidence,
+      }));
+      return { text: res.data.text, confidence: res.data.confidence, lines };
+    };
 
     type Cand = {
       rawText: string;
-      detected: DocType | '';
+      detected: DocType;
       doc: ParsedDoc;
       type: DocType;
       score: number;
       confidence: number;
     };
+
     const candidates: Cand[] = [];
     for (const v of variants) {
       const { text: txt, confidence, lines: vlines } = await ocr(v);
@@ -713,8 +712,7 @@ export async function POST(req: Request) {
       let bestType: DocType = order[0] || 'KTP';
       let bestScore = -1;
       for (const t of order) {
-        const parsed =
-          t === 'KK' ? parseKK(txt) : t === 'PASPOR' ? parsePassport(txt) : parseKTP(txt, vlines);
+        const parsed = t === 'KK' ? parseKK(txt) : t === 'PASPOR' ? parsePassport(txt) : parseKTP(txt, vlines);
         const s = scoreOf(parsed);
         if (s > bestScore) {
           best = parsed;
@@ -729,16 +727,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: 'Teks tidak terbaca dari gambar.' }, { status: 422 });
     }
 
-    // Urutan: jumlah field terbanyak, lalu confidence OCR tertinggi.
-    // Confidence dipakai karena pada foto resolusi kecil tesseract kadang membaca
-    // satu baris benar dan baris lain salah, dan confidence biasanya mengikuti mana
-    // yang benar (mis. "Kecamatan : AIR PUTIH" conf 82 vs "AIRPUTIH" conf 50).
     candidates.sort((a, b) => b.score - a.score || b.confidence - a.confidence);
     const base = candidates[0];
     const best: ParsedDoc = { ...base.doc };
-    // Gabung per-field: isi field yang MASIH KOSONG dari varian lain (nilai terisi tidak diganti).
+
     for (const f of SCORE_FIELDS) {
-      if (f === 'address') continue; // alamat digabung per-potongan di bawah
+      if (f === 'address') continue;
       if (String(best[f] || '').trim()) continue;
       for (const c of candidates) {
         if (String(c.doc[f] || '').trim()) {
@@ -748,14 +742,8 @@ export async function POST(req: Request) {
       }
     }
 
-    // ALAMAT: tiap potongan (jalan / RT-RW / kelurahan / kecamatan) dipilih dari varian
-    // dengan confidence baris TERTINGGI. Ini memakai fakta bahwa tesseract kadang membaca
-    // satu baris benar di skala tertentu dan baris lain benar di skala lain — dan confidence
-    // baris biasanya menandai mana yang benar (lihat catatan di atas fungsi ini).
     const ORDER: AddrKind[] = ['main', 'rtrw', 'kel', 'kec'];
     const chosen = new Map<AddrKind, AddrPart>();
-    // RT/RW: bentuk sah "000/000" (atau "004 RW 002") lebih dipercaya daripada confidence,
-    // karena "0001000" hasil salah baca bisa ber-confidence hampir sama.
     const rtrwRank = (v: string) => (/^RT\/RW\s*\d{3}\s*[\/|]\s*\d{3}$/i.test(v) ? 1000 : 0);
     for (const c of candidates) {
       for (const p of c.doc.addressParts || []) {
@@ -781,14 +769,23 @@ export async function POST(req: Request) {
     best.birthPlace = collapse(best.birthPlace);
     if (!best.gender) best.gender = 'L';
 
+    const normalizedData = {
+      ...best,
+      no_kk: best.noKK,
+      full_name: best.fullName,
+      birth_place: best.birthPlace,
+      birth_date: best.birthDate,
+      passport_number: best.passportNumber,
+      passport_expiry_date: best.passportExpiry,
+      passport_expiry: best.passportExpiry,
+      docType: bestType,
+      detectedDocType: detected,
+      rawText,
+    };
+
     return NextResponse.json({
       success: true,
-      data: {
-        ...best,
-        docType: bestType,
-        detectedDocType: detected,
-        rawText,
-      },
+      data: normalizedData,
     });
   } catch (error: any) {
     console.error('OCR Processing Error:', error);
