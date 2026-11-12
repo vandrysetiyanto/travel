@@ -243,6 +243,60 @@ export function initDB() {
     console.error('[initDB] sinkronRBAC gagal:', (e as Error).message);
   }
 
+  /*
+   * ── users.role_id -> FK ke roles(id) ───────────────────────────────────
+   *
+   * Sebelumnya users.role hanya TEXT tanpa FK: role yang dihapus meninggalkan
+   * user dengan role hantu, dan salah ketik tidak pernah ditolak database.
+   *
+   * users.role TETAP dipertahankan sebagai kolom denormalisasi karena SQLite
+   * tidak mendukung ALTER COLUMN / drop FK pada tabel yang sudah ada, dan
+   * seluruh kode (auth, RBAC, UI) membaca kode role — bukan id.
+   *
+   * Agar keduanya tidak pernah berbeda, dibuat TRIGGER dua arah:
+   *   - isi role_id dari role yang cocok saat role diubah
+   *   - isi role dari kode role saat role_id diubah
+   * Jadi penulisan lewat jalur lama (UPDATE users SET role=?) tetap konsisten.
+   */
+  try {
+    ensureColumn('users', 'role_id', 'role_id INTEGER REFERENCES roles(id)');
+
+    // Backfill: isi role_id untuk user yang belum punya (dijalankan setelah roles terisi).
+    db.exec(`
+      UPDATE users
+         SET role_id = (SELECT id FROM roles WHERE code = UPPER(TRIM(users.role)))
+       WHERE role_id IS NULL;
+    `);
+
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS trg_users_role_to_id_ins
+      AFTER INSERT ON users
+      FOR EACH ROW WHEN NEW.role_id IS NULL
+      BEGIN
+        UPDATE users SET role_id = (SELECT id FROM roles WHERE code = UPPER(TRIM(NEW.role)))
+        WHERE id = NEW.id AND role_id IS NULL;
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS trg_users_role_to_id_upd
+      AFTER UPDATE OF role ON users
+      FOR EACH ROW WHEN NEW.role IS NOT OLD.role
+      BEGIN
+        UPDATE users SET role_id = (SELECT id FROM roles WHERE code = UPPER(TRIM(NEW.role)))
+        WHERE id = NEW.id;
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS trg_users_id_to_role_upd
+      AFTER UPDATE OF role_id ON users
+      FOR EACH ROW WHEN NEW.role_id IS NOT OLD.role_id AND NEW.role_id IS NOT NULL
+      BEGIN
+        UPDATE users SET role = (SELECT code FROM roles WHERE id = NEW.role_id)
+        WHERE id = NEW.id AND NEW.role_id IS NOT NULL;
+      END;
+    `);
+  } catch (e) {
+    console.error('[initDB] migrasi users.role_id gagal:', (e as Error).message);
+  }
+
   // Migrasi kolom untuk database yang sudah berjalan (aman diulang).
   ensureColumn('master_jamaah', 'group_code', 'group_code TEXT');
   ensureColumn('transactions', 'total_pilgrims', 'total_pilgrims INTEGER NOT NULL DEFAULT 1');

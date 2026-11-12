@@ -17,7 +17,8 @@ export async function GET(req: Request) {
   const auth = await requirePermission(req, 'staff.manage');
   if (!auth.ok) return auth.response;
 
-  const dikenal = new Set((db.prepare('SELECT code FROM roles').all() as { code: string }[]).map((r) => r.code));
+  const semuaRole = db.prepare('SELECT id, code FROM roles').all() as { id: number; code: string }[];
+  const dikenal = new Set(semuaRole.map((r) => r.code));
 
   const users = db
     .prepare('SELECT id, name, email, role FROM users ORDER BY id')
@@ -60,7 +61,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: `Role ${roleBaru} tidak terdaftar.` }, { status: 400 });
     }
 
-    const dikenal = new Set((db.prepare('SELECT code FROM roles').all() as { code: string }[]).map((r) => r.code));
+    const semuaRole = db.prepare('SELECT id, code FROM roles').all() as { id: number; code: string }[];
+  const dikenal = new Set(semuaRole.map((r) => r.code));
     let target: { id: number; email: string; role: string }[] = [];
 
     if (body.semua === true) {
@@ -78,10 +80,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: 'Tidak ada role menggantung untuk diperbaiki.' });
     }
 
-    const upd = db.prepare('UPDATE users SET role = ? WHERE id = ?');
+    const idRole = semuaRole.find((r) => r.code === roleBaru)!.id;
+    // role_id adalah sumber; trigger di DB menyamakan kolom `role` (denormalisasi).
+    const upd = db.prepare('UPDATE users SET role_id = ?, role = ? WHERE id = ?');
     db.transaction(() => {
       for (const u of target) {
-        upd.run(roleBaru, u.id);
+        upd.run(idRole, roleBaru, u.id);
         catatAudit({
           user: auth.user,
           action: 'UPDATE',

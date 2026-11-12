@@ -137,6 +137,35 @@ export function sinkronRBAC(db: Database.Database): { izin: number; role: number
   });
   norma();
 
+  /*
+   * role_id -> role (dan sebaliknya) dirapikan sekali saat boot.
+   *
+   * Trigger SQLite hanya menyala saat kolom terkait di-UPDATE, jadi baris lama
+   * atau baris yang diubah langsung lewat SQL bisa tertinggal. Di sini kedua
+   * arah disamakan; role yang tidak terdaftar sengaja TIDAK dipaksa (dibiarkan
+   * menggantung agar terlihat & diperbaiki eksplisit).
+   */
+  const rapikanPeta = db.transaction(() => {
+    // 1) role_id kosong tetapi kode role-nya terdaftar -> isi
+    db.prepare(`UPDATE users
+                   SET role_id = (SELECT id FROM roles WHERE code = UPPER(TRIM(users.role)))
+                 WHERE role_id IS NULL
+                   AND EXISTS (SELECT 1 FROM roles WHERE code = UPPER(TRIM(users.role)))`).run();
+
+    // 2) role_id menunjuk role lain -> samakan kode role dengan role_id (id = sumber)
+    db.prepare(`UPDATE users
+                   SET role = (SELECT code FROM roles WHERE id = users.role_id)
+                 WHERE role_id IS NOT NULL
+                   AND EXISTS (SELECT 1 FROM roles WHERE id = users.role_id)
+                   AND role IS NOT (SELECT code FROM roles WHERE id = users.role_id)`).run();
+
+    // 3) role_id menunjuk role yang sudah hilang -> kosongkan, jangan tebak
+    db.prepare(`UPDATE users SET role_id = NULL
+                 WHERE role_id IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM roles WHERE id = users.role_id)`).run();
+  });
+  rapikanPeta();
+
   if (menggantung > 0) {
     console.warn(
       `[sinkronRBAC] ${menggantung} pengguna memakai role yang tidak terdaftar. ` +

@@ -16,13 +16,22 @@ function roleSah(v: unknown): string | null {
   return row ? row.code : null;
 }
 
+/** id role dari kodenya — dipakai mengisi users.role_id (sumber FK). */
+function idRole(kode: string | null | undefined): number | null {
+  if (!kode) return null;
+  const row = db.prepare('SELECT id FROM roles WHERE code = ?').get(String(kode).toUpperCase()) as
+    | { id: number }
+    | undefined;
+  return row ? row.id : null;
+}
+
 /** Daftar staf — hanya pemegang staff.manage. */
 export async function GET(req: Request) {
   const auth = await requirePermission(req, 'staff.manage');
   if (!auth.ok) return auth.response;
 
   try {
-    const users = db.prepare('SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC').all();
+    const users = db.prepare('SELECT id, name, email, role, role_id, created_at FROM users ORDER BY created_at DESC').all();
     const roles = db.prepare('SELECT code, name, is_system FROM roles ORDER BY is_system DESC, name ASC').all();
     return NextResponse.json({ success: true, users, roles });
   } catch (error: any) {
@@ -59,11 +68,12 @@ export async function POST(req: Request) {
        * `lastInsertRowid` adalah id baris yang baru dibuat — inilah identitas yang
        * benar untuk menghubungkan jejak audit ke objeknya.
        */
-      const info = db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run(
+      const info = db.prepare('INSERT INTO users (name, email, password, role, role_id) VALUES (?, ?, ?, ?, ?)').run(
         name,
         cleanEmail,
         bcrypt.hashSync(String(password), 10),
         roleFinal,
+        idRole(roleFinal),
       );
       const baruId = Number(info.lastInsertRowid);
 
@@ -105,11 +115,12 @@ export async function POST(req: Request) {
         if (String(password).length < 8) {
           return NextResponse.json({ success: false, message: 'Password minimal 8 karakter' }, { status: 400 });
         }
-        db.prepare('UPDATE users SET name = ?, email = ?, password = ?, role = ? WHERE id = ?').run(
-          name, cleanEmail, bcrypt.hashSync(String(password), 10), roleBaru, id,
+        db.prepare('UPDATE users SET name = ?, email = ?, password = ?, role = ?, role_id = ? WHERE id = ?').run(
+          name, cleanEmail, bcrypt.hashSync(String(password), 10), roleBaru, idRole(roleBaru), id,
         );
       } else {
-        db.prepare('UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?').run(name, cleanEmail, roleBaru, id);
+        db.prepare('UPDATE users SET name = ?, email = ?, role = ?, role_id = ? WHERE id = ?')
+          .run(name, cleanEmail, roleBaru, idRole(roleBaru), id);
       }
 
       catatAudit({

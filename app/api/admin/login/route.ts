@@ -16,7 +16,14 @@ export async function POST(req: Request) {
     // Pesan error disamakan untuk email tidak ada / password salah (jangan bocorkan mana yang salah).
     const WRONG = NextResponse.json({ success: false, message: 'Email atau password salah.' }, { status: 401 });
 
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email).trim().toLowerCase()) as any;
+    const user = db
+      .prepare(
+        `SELECT u.*, r.code AS role_kode
+           FROM users u
+           LEFT JOIN roles r ON r.id = u.role_id
+          WHERE u.email = ?`,
+      )
+      .get(String(email).trim().toLowerCase()) as any;
     if (!user || !user.password) return WRONG;
 
     const stored = String(user.password);
@@ -36,16 +43,20 @@ export async function POST(req: Request) {
 
     if (!valid) return WRONG;
 
+    // Role diambil dari role_id (FK) bila ada; kolom teks hanya cadangan.
+    const roleFinal = String(user.role_kode || user.role || '').toUpperCase();
+
     const token = await createSessionToken({
       uid: user.id,
       email: user.email,
       name: user.name,
-      role: user.role,
+      role: roleFinal,
+      roleId: user.role_id ?? null,
     });
 
     const res = NextResponse.json({
       success: true,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: { id: user.id, name: user.name, email: user.email, role: roleFinal, roleId: user.role_id ?? null },
     });
     res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions);
     return res;

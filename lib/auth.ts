@@ -1,4 +1,14 @@
-// Verifikasi sesi admin. Dipakai oleh route API (Node runtime).
+/**
+ * Verifikasi sesi admin. Dipakai oleh route API (Node runtime).
+ *
+ * PENTING: role TIDAK dipercaya dari isi token.
+ *
+ * Token ditandatangani saat login dan berumur 12 jam. Kalau role diambil dari
+ * token, maka user yang dicabut/diubah role-nya tetap memakai hak lamanya
+ * sampai token kedaluwarsa — termasuk jika role-nya sudah dihapus. Karena itu
+ * setiap permintaan memuat ulang role terkini dari database (lewat users.role_id
+ * bila ada, dengan cadangan kode di users.role).
+ */
 import { NextResponse } from 'next/server';
 import * as jose from 'jose';
 
@@ -14,6 +24,7 @@ export interface SessionUser {
   email: string;
   name: string;
   role: string;
+  roleId?: number | null;
 }
 
 /** Baca cookie sesi dari header Cookie (tanpa dependensi next/headers, aman di route). */
@@ -38,14 +49,49 @@ export async function verifySessionToken(token: string): Promise<SessionUser | n
       email: String(payload.email || ''),
       name: String(payload.name || ''),
       role: String(payload.role || ''),
+      roleId: typeof payload.roleId === 'number' ? payload.roleId : null,
     };
   } catch {
     return null;
   }
 }
 
+/**
+ * Ambil role terkini dari database.
+ *
+ * `users.role_id` adalah sumber utama (FK ke roles.id); `users.role` hanya
+ * cadangan untuk baris lama. Bila role tidak ditemukan, kembalikan kode apa
+ * adanya — permissionsOf() akan memperlakukannya sebagai 0 izin (default deny).
+ */
+function roleTerkini(uid: number): { role: string; roleId: number | null } | null {
+  // Impor dinamis: auth dipakai di banyak route yang sudah memuat db, dan
+  // impor statis di sini akan memperpanjang rantai modul saat inisialisasi.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const db = require('@/lib/db').default;
+  const row = db
+    .prepare(
+      `SELECT u.role AS role_lama, r.code AS role_kode, u.role_id AS role_id
+         FROM users u
+         LEFT JOIN roles r ON r.id = u.role_id
+        WHERE u.id = ?`,
+    )
+    .get(uid) as { role_lama: string; role_kode: string | null; role_id: number | null } | undefined;
+
+  if (!row) return null;
+  return {
+    role: String(row.role_kode || row.role_lama || '').toUpperCase(),
+    roleId: row.role_id ?? null,
+  };
+}
+
 export async function createSessionToken(user: SessionUser): Promise<string> {
-  return await new jose.SignJWT({ uid: user.uid, email: user.email, name: user.name, role: user.role })
+  return await new jose.SignJWT({
+    uid: user.uid,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    roleId: user.roleId ?? null,
+  })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_MAX_AGE}s`)
@@ -72,11 +118,19 @@ export async function requireAdmin(req: Request): Promise<AuthResult> {
   if (!token) {
     return { ok: false, response: NextResponse.json({ success: false, message: 'Belum login.' }, { status: 401 }) };
   }
-  const user = await verifySessionToken(token);
-  if (!user) {
+  const sesi = await verifySessionToken(token);
+  if (!sesi) {
     return { ok: false, response: NextResponse.json({ success: false, message: 'Sesi tidak valid atau kedaluwarsa.' }, { status: 401 }) };
   }
-  return { ok: true, user };
+
+  // Role diambil ulang dari database: perubahan/pencabutan role berlaku seketika,
+  // tidak menunggu token kedaluwarsa.
+  const terkini = roleTerkini(sesi.uid);
+  if (!terkini) {
+    return { ok: false, response: NextResponse.json({ success: false, message: 'Akun tidak ditemukan.' }, { status: 401 }) };
+  }
+
+  return { ok: true, user: { ...sesi, role: terkini.role, roleId: terkini.roleId } };
 }
 
 /** Gerbang khusus OWNER (Kelola Staf, hapus user, dll). */

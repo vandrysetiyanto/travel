@@ -76,18 +76,25 @@ export async function POST(req: Request) {
 /** Susun respons standar: user, role, izin, dan menu yang boleh tampil. */
 function payloadMe(uid: number) {
   const user = db
-    .prepare('SELECT id, name, email, role, created_at FROM users WHERE id = ?')
+    .prepare(
+      `SELECT u.id, u.name, u.email, u.role, u.role_id, u.created_at,
+              r.code AS role_kode
+         FROM users u
+         LEFT JOIN roles r ON r.id = u.role_id
+        WHERE u.id = ?`,
+    )
     .get(uid) as any;
 
   if (!user) return { success: false as const, message: 'Akun tidak ditemukan.' };
 
-  const role = String(user.role || '').toUpperCase();
+  // role_id (FK) adalah sumber; kolom teks hanya cadangan untuk baris lama.
+  const role = String(user.role_kode || user.role || '').toUpperCase();
   const izin = permissionsOf(role);
   const menu = menuEfektif(role, izin);
 
   return {
     success: true as const,
-    user,
+    user: { id: user.id, name: user.name, email: user.email, role, role_id: user.role_id, created_at: user.created_at },
     roleDikenal: roleDikenal(role),
     permissions: izin,
     menu,
