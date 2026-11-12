@@ -134,6 +134,22 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, message: 'Nominal pembayaran harus lebih dari 0' }, { status: 400 });
       }
 
+      /*
+       * Tolak pembayaran yang melebihi sisa tagihan. Tanpa ini `paid_amount`
+       * bisa melampaui `total_amount` dan kelebihannya hilang karena sisa
+       * tagihan dipaksa 0 (Math.max). Uang masuk harus selalu punya tujuan jelas.
+       */
+      const sudahDibayar = Number(tx.paid_amount) || 0;
+      const tagihan = Number(tx.total_amount) || 0;
+      if (sudahDibayar + payAmount > tagihan) {
+        const lebih = sudahDibayar + payAmount - tagihan;
+        return NextResponse.json({
+          success: false,
+          message: `Nominal melebihi sisa tagihan sebesar Rp ${lebih.toLocaleString('id-ID')}. ` +
+            `Tagihan Rp ${tagihan.toLocaleString('id-ID')}, sudah dibayar Rp ${sudahDibayar.toLocaleString('id-ID')}.`,
+        }, { status: 400 });
+      }
+
       const newPaid = tx.paid_amount + payAmount;
       const newRemaining = Math.max(0, tx.total_amount - newPaid);
       let newStatus = tx.status;

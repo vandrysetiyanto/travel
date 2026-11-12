@@ -58,7 +58,16 @@ export async function POST(req: Request) {
       passwordHash = await bcrypt.hash(String(body.password), 10);
     }
 
-    db.prepare('UPDATE users SET name = ?, email = ?, password = ? WHERE id = ?').run(name, email, passwordHash, uid);
+    /*
+     * Bila pengguna mengganti password, penanda "wajib ganti" ikut dilepas.
+     * Ini yang membuka akses penuh ke aplikasi setelah password bawaan diganti.
+     */
+    const gantiSandi = !!body.password;
+    db.prepare(
+      gantiSandi
+        ? 'UPDATE users SET name = ?, email = ?, password = ?, must_change_password = 0 WHERE id = ?'
+        : 'UPDATE users SET name = ?, email = ? WHERE id = ?',
+    ).run(...(gantiSandi ? [name, email, passwordHash, uid] : [name, email, uid]));
 
     const token = await createSessionToken({ uid, email, name, role: current.role });
     const data = payloadMe(uid);
@@ -78,6 +87,7 @@ function payloadMe(uid: number) {
   const user = db
     .prepare(
       `SELECT u.id, u.name, u.email, u.role, u.role_id, u.created_at,
+              COALESCE(u.must_change_password, 0) AS must_change_password,
               r.code AS role_kode
          FROM users u
          LEFT JOIN roles r ON r.id = u.role_id
@@ -94,7 +104,11 @@ function payloadMe(uid: number) {
 
   return {
     success: true as const,
-    user: { id: user.id, name: user.name, email: user.email, role, role_id: user.role_id, created_at: user.created_at },
+    user: {
+      id: user.id, name: user.name, email: user.email, role,
+      role_id: user.role_id, created_at: user.created_at,
+      must_change_password: Number(user.must_change_password) === 1,
+    },
     roleDikenal: roleDikenal(role),
     permissions: izin,
     menu,

@@ -52,8 +52,20 @@ export function recalcTransaction(transactionId: number) {
     .prepare(`SELECT COALESCE(SUM(amount),0) as c FROM payment_history WHERE transaction_id = ? AND status = 'APPROVED'`)
     .get(transactionId) as any;
   const paid = Number(sum.c) || 0;
-  const remaining = Math.max(0, tx.total_amount - paid);
-  const status = remaining === 0 ? 'PAID' : paid > 0 ? 'DP' : 'PENDING';
+  const tagihan = Number(tx.total_amount) || 0;
+
+  /*
+   * Sisa tagihan TIDAK dipaksa 0 saat kelebihan bayar.
+   *
+   * Dulu: `Math.max(0, tagihan - paid)` membuat kelebihan bayar hilang tanpa
+   * jejak (uang masuk 13 juta atas tagihan 10 juta -> sisa 0, 3 juta tak
+   * tercatat). Sekarang nilai negatif dibiarkan agar kelebihan bayar TERLIHAT
+   * dan bisa ditindaklanjuti (refund / dialihkan ke booking lain / koreksi).
+   * Jalur API sudah menolak lebih bayar; ini jaring pengaman untuk data lama
+   * dan pemanggil lain.
+   */
+  const remaining = tagihan - paid;
+  const status = paid >= tagihan && tagihan > 0 ? 'PAID' : paid > 0 ? 'DP' : 'PENDING';
 
   db.prepare('UPDATE transactions SET paid_amount = ?, remaining_amount = ?, status = ? WHERE id = ?').run(
     paid,
@@ -62,7 +74,7 @@ export function recalcTransaction(transactionId: number) {
     transactionId
   );
 
-  return { paid, remaining, status };
+  return { paid, remaining, status, lebihBayar: Math.max(0, paid - tagihan) };
 }
 
 /** Rekening transfer yang ditampilkan di halaman track (satu sumber kebenaran). */

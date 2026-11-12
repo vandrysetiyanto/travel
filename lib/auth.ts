@@ -109,6 +109,19 @@ export const sessionCookieOptions = {
 };
 
 type AuthOk = { ok: true; user: SessionUser | null };
+
+/**
+ * Route yang tetap boleh diakses meski pengguna WAJIB ganti password bawaan.
+ *
+ * Tanpa pengecualian ini, pengguna terkunci: tidak bisa membuka halaman ganti
+ * password. Semua route admin lain ditahan sampai password diganti, karena
+ * password bawaan tertulis di dokumentasi dan sama untuk setiap instalasi.
+ */
+const BOLEH_SAAT_WAJIB_GANTI = new Set([
+  '/api/admin/login',
+  '/api/admin/logout',
+  '/api/admin/staff/me',
+]);
 type AuthFail = { ok: false; response: NextResponse };
 export type AuthResult = AuthOk | AuthFail;
 
@@ -130,7 +143,44 @@ export async function requireAdmin(req: Request): Promise<AuthResult> {
     return { ok: false, response: NextResponse.json({ success: false, message: 'Akun tidak ditemukan.' }, { status: 401 }) };
   }
 
+  /*
+   * Gerbang "wajib ganti password" di sisi SERVER, bukan hanya UI.
+   *
+   * Penanda disimpan di DB (users.must_change_password) sehingga tidak bisa
+   * dilewati dengan menghapus JavaScript di browser atau memanggil API langsung.
+   */
+  let jalur = '';
+  try {
+    jalur = new URL(req.url).pathname;
+  } catch {
+    jalur = '';
+  }
+  const wajibGanti = roleWajibGantiSandi(sesi.uid);
+  if (wajibGanti && jalur && !BOLEH_SAAT_WAJIB_GANTI.has(jalur)) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          success: false,
+          must_change_password: true,
+          message: 'Password Anda masih password bawaan. Ganti password terlebih dahulu sebelum memakai aplikasi.',
+        },
+        { status: 403 },
+      ),
+    };
+  }
+
   return { ok: true, user: { ...sesi, role: terkini.role, roleId: terkini.roleId } };
+}
+
+/** Apakah pengguna masih memakai password bawaan? */
+function roleWajibGantiSandi(uid: number): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const db = require('@/lib/db').default;
+  const row = db.prepare('SELECT COALESCE(must_change_password, 0) AS w FROM users WHERE id = ?').get(uid) as
+    | { w: number }
+    | undefined;
+  return Number(row?.w) === 1;
 }
 
 /** Gerbang khusus OWNER (Kelola Staf, hapus user, dll). */

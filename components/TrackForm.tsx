@@ -53,6 +53,8 @@ const formatThousand = (val: string) => {
 
 export default function TrackForm({ initialCode = '' }: { initialCode?: string }) {
   const [code, setCode] = useState(initialCode);
+  // 4 digit terakhir nomor HP — dipakai membuka nama lengkap & nomor kwitansi.
+  const [verify, setVerify] = useState('');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState('');
@@ -109,7 +111,8 @@ export default function TrackForm({ initialCode = '' }: { initialCode?: string }
     setData(null);
     setUploadMsg('');
     try {
-      const res = await fetch(`/api/track?code=${encodeURIComponent(q)}`);
+      const v = verify.replace(/\D/g, '').slice(0, 4);
+      const res = await fetch(`/api/track?code=${encodeURIComponent(q)}${v ? `&verify=${v}` : ''}`);
       const json = await res.json();
       if (json.success) {
         setData(json);
@@ -197,6 +200,16 @@ export default function TrackForm({ initialCode = '' }: { initialCode?: string }
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           placeholder="Contoh: UMR-2609-1234"
           className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none"
+          onKeyDown={(e) => e.key === 'Enter' && doSearch()}
+        />
+        <input
+          type="text"
+          inputMode="numeric"
+          value={verify}
+          onChange={(e) => setVerify(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          placeholder="4 digit HP"
+          title="4 digit terakhir nomor HP yang dipakai saat mendaftar (untuk membuka nama lengkap)"
+          className="w-32 bg-white border border-slate-300 rounded-xl px-3 py-3 text-sm font-mono text-center focus:ring-2 focus:ring-slate-900 focus:outline-none"
           onKeyDown={(e) => e.key === 'Enter' && doSearch()}
         />
         <button

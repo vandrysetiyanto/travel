@@ -320,6 +320,16 @@ export function initDB() {
   // Barang bisa diserahkan ke orang tertentu, bukan hanya ke booking.
   ensureColumn('inventory_handover', 'jamaah_id', 'jamaah_id INTEGER');
 
+  /*
+   * Penanda "password masih bawaan / wajib diganti".
+   *
+   * Akun bawaan (owner@travel.com, admin@travel.com) memakai password default
+   * yang tertulis di dokumentasi. Selama belum diganti, akun itu adalah pintu
+   * masuk terbuka bagi siapa pun yang pernah membaca repo/dokumen.
+   * Nilai 1 = wajib ganti sebelum boleh memakai aplikasi.
+   */
+  ensureColumn('users', 'must_change_password', 'must_change_password INTEGER NOT NULL DEFAULT 0');
+
   // HPP perlengkapan ditautkan ke baris penyerahan agar bisa ditelusuri/dibatalkan.
   ensureColumn('ledger', 'handover_id', 'handover_id INTEGER REFERENCES inventory_handover(id) ON DELETE CASCADE');
 
@@ -413,8 +423,8 @@ export function initDB() {
   if (checkOwner.count === 0) {
     try {
       db.prepare(`
-        INSERT INTO users (name, email, password, role)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO users (name, email, password, role, must_change_password)
+        VALUES (?, ?, ?, ?, 1)
       `).run('Owner / Direktur Travel', 'owner@travel.com', 'owner123', 'OWNER');
     } catch (e) {
       console.error('[initDB] seed owner dilewati:', (e as Error).message);
@@ -424,8 +434,8 @@ export function initDB() {
   const checkAdmin = db.prepare(`SELECT COUNT(*) as count FROM users WHERE email = 'admin@travel.com'`).get() as { count: number };
   if (checkAdmin.count === 0) {
     db.prepare(`
-      INSERT INTO users (name, email, password, role) 
-      VALUES (?, ?, ?, ?)
+      INSERT INTO users (name, email, password, role, must_change_password)
+      VALUES (?, ?, ?, ?, 1)
     `).run('Staff Admin Operasional', 'admin@travel.com', 'admin123', 'ADMIN');
   } else {
     db.prepare(`UPDATE users SET role = 'ADMIN' WHERE email = 'admin@travel.com' AND role = 'SUPERADMIN'`).run();

@@ -6,6 +6,7 @@ function EmptyState({ icon, title, description, actionText, onAction }: {
 }) {
   return (
     <div className="py-12 px-4 text-center flex flex-col items-center justify-center">
+
       <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-3xl mb-3 border border-slate-200 shadow-xs">
         {icon}
       </div>
@@ -3362,6 +3363,13 @@ export default function AdminDashboard() {
     if (raw) setUser(JSON.parse(raw));
   }, []);
 
+  // Dipakai layar "wajib ganti password": akses ditahan sampai password diganti.
+  const [wajibGanti, setWajibGanti] = useState(false);
+  const [sandi1, setSandi1] = useState('');
+  const [sandi2, setSandi2] = useState('');
+  const [pesanSandi, setPesanSandi] = useState('');
+  const [simpanSandi, setSimpanSandi] = useState(false);
+
   useEffect(() => {
     if (!user) return;
     fetch('/api/admin/staff/me')
@@ -3376,11 +3384,39 @@ export default function AdminDashboard() {
         if (d?.success) {
           setPerms(Array.isArray(d.permissions) ? d.permissions : []);
           setMenuAktif(Array.isArray(d.menu) ? d.menu : []);
+          if (d.user?.must_change_password) setWajibGanti(true);
           if (d.user) setUser((u: any) => ({ ...u, ...d.user }));
         }
       })
       .catch(() => {});
   }, [user?.id]);
+
+  const gantiSandiBawaan = async () => {
+    setPesanSandi('');
+    if (sandi1.length < 8) { setPesanSandi('Password minimal 8 karakter.'); return; }
+    if (sandi1 !== sandi2) { setPesanSandi('Konfirmasi password tidak sama.'); return; }
+    setSimpanSandi(true);
+    try {
+      const r = await fetch('/api/admin/staff/me', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: sandi1 }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d.success) {
+        setWajibGanti(false);
+        setSandi1(''); setSandi2(''); setPesanSandi('');
+        // Muat ulang agar izin & menu aktif.
+        window.location.reload();
+      } else {
+        setPesanSandi(d.message || 'Gagal menyimpan password.');
+      }
+    } catch {
+      setPesanSandi('Gagal menghubungi server.');
+    } finally {
+      setSimpanSandi(false);
+    }
+  };
 
   const isOwner = user?.role === 'OWNER';
   /** Cek izin; selama daftar belum termuat, tombol disembunyikan (aman secara default). */
@@ -3466,7 +3502,49 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden">
+    <div
+ className="flex h-screen bg-slate-100 overflow-hidden">
+      {/* ── WAJIB GANTI PASSWORD BAWAAN ──
+          Ditampilkan menutupi seluruh dashboard selama users.must_change_password = 1.
+          Server juga menolak semua API admin lain (403), jadi layar ini bukan satu-satunya
+          pertahanan — hanya petunjuk yang jelas bagi pengguna. */}
+      {wajibGanti && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
+            <h3 className="text-base font-black text-slate-900">Ganti Password Bawaan</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Akun Anda masih memakai password bawaan yang tertulis di dokumentasi. Selama belum diganti,
+              seluruh menu ditahan karena siapa pun yang tahu password bawaan bisa masuk.
+            </p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-600">Password Baru</label>
+                <input type="password" value={sandi1} onChange={(e) => setSandi1(e.target.value)}
+                  placeholder="Minimal 8 karakter"
+                  className="w-full mt-1 px-3 py-2 text-sm border border-slate-200 rounded-xl" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-600">Ulangi Password Baru</label>
+                <input type="password" value={sandi2} onChange={(e) => setSandi2(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && gantiSandiBawaan()}
+                  className="w-full mt-1 px-3 py-2 text-sm border border-slate-200 rounded-xl" />
+              </div>
+              {pesanSandi && <p className="text-[11px] text-rose-600 font-bold">{pesanSandi}</p>}
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => { localStorage.removeItem('admin_user'); window.location.href = '/admin/login'; }}
+                className="px-3.5 py-2 text-xs font-bold text-slate-600 rounded-xl hover:bg-slate-100">
+                Keluar
+              </button>
+              <button onClick={gantiSandiBawaan} disabled={simpanSandi}
+                className="px-4 py-2 text-xs font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-40">
+                {simpanSandi ? 'Menyimpan…' : 'Simpan & Lanjut'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Backdrop */}
       {mobileMenuOpen && (
         <div

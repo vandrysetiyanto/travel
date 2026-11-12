@@ -31,6 +31,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: 'Pembayaran ini sudah disetujui sebelumnya.' }, { status: 400 });
     }
 
+    /*
+     * Tolak pembayaran yang membuat total melebihi tagihan.
+     *
+     * Sebelumnya `recalcTransaction()` memakai Math.max(0, ...) untuk sisa
+     * tagihan, sehingga kelebihan bayar HILANG TANPA JEJAK: tagihan 10 juta,
+     * dibayar 13 juta -> paid_amount 13 juta, remaining 0, selisih 3 juta tidak
+     * tercatat di mana pun dan laporan tidak bisa dipertanggungjawabkan.
+     * Lebih bayar harus diselesaikan (refund/dialihkan) lewat keputusan sadar,
+     * bukan lolos diam-diam.
+     */
+    if (action === 'APPROVE') {
+      const tx = db.prepare('SELECT id, total_amount, COALESCE(paid_amount,0) AS paid FROM transactions WHERE id = ?')
+        .get(payment.transaction_id) as { id: number; total_amount: number; paid: number } | undefined;
+      if (tx) {
+        const sudahDibayar = Number(tx.paid) || 0;
+        const tagihan = Number(tx.total_amount) || 0;
+        const nominal = Number(payment.amount) || 0;
+        if (nominal <= 0) {
+          return NextResponse.json({ success: false, message: 'Nominal pembayaran tidak valid (harus lebih dari 0).' }, { status: 400 });
+        }
+        if (sudahDibayar + nominal > tagihan) {
+          const lebih = sudahDibayar + nominal - tagihan;
+          return NextResponse.json({
+            success: false,
+            message: `Pembayaran ditolak: total akan melebihi tagihan sebesar Rp ${lebih.toLocaleString('id-ID')}. ` +
+              `Tagihan Rp ${tagihan.toLocaleString('id-ID')}, sudah dibayar Rp ${sudahDibayar.toLocaleString('id-ID')}, ` +
+              `nominal ini Rp ${nominal.toLocaleString('id-ID')}. Kurangi nominalnya atau proses kelebihan sebagai refund.`,
+          }, { status: 400 });
+        }
+      }
+    }
+
     const now = new Date().toISOString();
 
     const hasil = db.transaction(() => {
