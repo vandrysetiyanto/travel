@@ -38,6 +38,33 @@ function pasangHeaderKeamanan(res: NextResponse): NextResponse {
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.headers.set('X-DNS-Prefetch-Control', 'off');
   res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
+  /*
+   * Content-Security-Policy (S2 lanjutan).
+   *
+   * 'unsafe-inline' pada script/style DIPERLUKAN karena Next menyisipkan skrip
+   * hidrasi inline; menghapusnya akan mematikan seluruh UI (sudah diperiksa:
+   * 12 tag <script> inline di halaman login, tanpa CDN eksternal). Yang tetap
+   * ditegakkan secara nyata: tidak ada objek/iframe asing, form hanya boleh
+   * dikirim ke origin sendiri, dan base-uri dibatasi — ini yang menutup
+   * penyalahgunaan paling umum (penyisipan skrip lewat iframe/plugin,
+   * pengalihan form ke domain penyerang).
+   */
+  res.headers.set(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self' data:",
+      "connect-src 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+    ].join('; '),
+  );
   // HSTS hanya masuk akal di HTTPS; browser mengabaikannya pada http.
   res.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   return res;
