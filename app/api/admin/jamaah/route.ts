@@ -29,8 +29,36 @@ export async function GET(request: Request) {
     }
 
     query += ' ORDER BY created_at DESC';
-    const jamaahList = db.prepare(query).all(...params);
-    return NextResponse.json({ success: true, jamaah: jamaahList });
+
+    /*
+     * Paginasi OPSIONAL.
+     *
+     * Tanpa parameter, perilaku tetap seperti sebelumnya (seluruh baris) supaya
+     * UI yang sudah ada tidak rusak. Bila `limit` dikirim, server membatasi
+     * jumlah baris dan menyertakan `total` agar klien bisa membuat navigasi.
+     * Ini mencegah payload membengkak saat data jamaah bertambah ribuan.
+     */
+    const limitParam = searchParams.get('limit');
+    const offsetParam = searchParams.get('offset');
+    const limit = limitParam ? Math.min(Math.max(Number(limitParam) || 0, 1), 500) : null;
+    const offset = offsetParam ? Math.max(Number(offsetParam) || 0, 0) : 0;
+
+    let total: number | null = null;
+    if (limit !== null) {
+      const hitung = query.replace('SELECT * FROM master_jamaah', 'SELECT COUNT(*) c FROM master_jamaah');
+      total = Number((db.prepare(hitung).get(...params) as { c: number }).c) || 0;
+      query += ' LIMIT ? OFFSET ?';
+    }
+
+    const jamaahList = limit !== null
+      ? db.prepare(query).all(...params, limit, offset)
+      : db.prepare(query).all(...params);
+
+    return NextResponse.json({
+      success: true,
+      jamaah: jamaahList,
+      ...(limit !== null ? { total, limit, offset, ada_lagi: offset + jamaahList.length < (total || 0) } : {}),
+    });
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }

@@ -7,6 +7,7 @@ const execPromise = util.promisify(exec);
 import { NextResponse } from 'next/server';
 import { createWorker } from 'tesseract.js';
 import sharp from 'sharp';
+import { batasiLaju, ipPemanggil } from '@/lib/laju';
 
 type DocType = 'KTP' | 'KK' | 'PASPOR';
 type AddrKind = 'main' | 'rtrw' | 'kel' | 'kec';
@@ -554,6 +555,26 @@ const SCORE_FIELDS: (keyof ParsedDoc)[] = [
 
 export async function POST(req: Request) {
   try {
+    /*
+     * S5: batas laju untuk endpoint publik yang memanggil layanan LLM berbayar.
+     *
+     * Tanpa ini siapa pun bisa memanggil OCR berulang-ulang hanya dengan curl —
+     * memicu biaya provider dan menghabiskan CPU server (sharp + tesseract).
+     * Batas: 10 permintaan / menit per IP. Klien yang sah (1 pendaftaran)
+     * jauh di bawah angka ini.
+     */
+    const cekLaju = batasiLaju(`ocr:${ipPemanggil(req)}`, 10, 60_000);
+    if (!cekLaju.boleh) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Terlalu banyak permintaan OCR. Coba lagi dalam ${cekLaju.sisaDetik} detik.`,
+          retry_after: cekLaju.sisaDetik,
+        },
+        { status: 429, headers: { 'Retry-After': String(cekLaju.sisaDetik) } },
+      );
+    }
+
     const formData = await req.formData();
     const file = formData.get('image') as File | null;
     const requested = (formData.get('docType') as string)?.toUpperCase() || '';

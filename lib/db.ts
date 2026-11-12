@@ -13,6 +13,18 @@ const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+/*
+ * Pengaturan SQLite yang dulu TIDAK eksplisit.
+ *
+ * - busy_timeout: sebelumnya hanya mengandalkan nilai bawaan better-sqlite3
+ *   (5000 ms). Menyetelnya sendiri membuat perilaku tidak berubah diam-diam
+ *   saat library di-upgrade; penulis menunggu, bukan langsung SQLITE_BUSY.
+ * - synchronous NORMAL: aman terhadap korupsi (WAL), tetapi transaksi terakhir
+ *   bisa hilang bila listrik mati. Untuk data keuangan dipakai FULL.
+ */
+db.pragma('busy_timeout = 5000');
+db.pragma('synchronous = FULL');
+
 function ensureColumn(table: string, column: string, ddl: string) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all() as any[];
   if (!cols.some((c) => c.name === column)) {
@@ -623,7 +635,19 @@ initDB();
     cm.run('Logistik', 'LOG_TAS', 'Tas Paspor & Selempang', 1, idBarang('TAS-01'), 1);
     cm.run('Logistik', 'LOG_SYAL', 'Syal / Atribut Identitas', 0, null, 0);
     cm.run('Manasik', 'MAN_HADIR', 'Kehadiran Manasik Umroh', 0, null, 1);
+  
+  /*
+   * S6: PRAGMA optimize — memberi tahu SQLite agar menganalisis indeks yang
+   * dipakai secara berkala. Tanpa ini statistik query tidak pernah diperbarui,
+   * sehingga rencana eksekusi memburuk seiring data bertambah (laporan melambat
+   * tanpa gejala). Dijalankan sekali saat boot; sangat ringan.
+   */
+  try {
+    db.pragma('optimize');
+  } catch (e) {
+    console.error('[initDB] PRAGMA optimize gagal:', (e as Error).message);
   }
+}
 
 
 export default db;
