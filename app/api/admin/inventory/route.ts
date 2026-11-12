@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { requirePermission } from '@/lib/permissions';
+import { catatHppPenyerahan } from '@/lib/persediaan';
 
 initDB();
 
@@ -37,21 +38,29 @@ export async function POST(req: Request) {
 
     if (action === 'ADD_ITEM') {
       { const cek = await requirePermission(req, 'inventory.create'); if (!cek.ok) return cek.response; }
-      const { code, name, category, stock_total, unit, description } = body;
+      const { code, name, category, stock_total, unit, description, unit_cost } = body;
       if (!code || !name) {
         return NextResponse.json({ success: false, message: 'Kode dan nama barang wajib diisi' }, { status: 400 });
       }
       db.prepare(`
-        INSERT INTO inventory_items (code, name, category, stock_total, unit, description)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(code, name, category || 'Perlengkapan', Number(stock_total) || 0, unit || 'Pcs', description || '');
+        INSERT INTO inventory_items (code, name, category, stock_total, unit, description, unit_cost)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        code, name, category || 'Perlengkapan', Number(stock_total) || 0, unit || 'Pcs', description || '',
+        Math.max(0, Math.round(Number(unit_cost) || 0)),
+      );
       return NextResponse.json({ success: true, message: 'Barang berhasil ditambahkan' });
     }
 
     if (action === 'UPDATE_STOCK') {
       { const cek = await requirePermission(req, 'inventory.update'); if (!cek.ok) return cek.response; }
-      const { item_id, stock_total } = body;
-      db.prepare('UPDATE inventory_items SET stock_total = ? WHERE id = ?').run(Number(stock_total), item_id);
+      const { item_id, stock_total, unit_cost } = body;
+      if (unit_cost !== undefined && unit_cost !== null && unit_cost !== '') {
+        db.prepare('UPDATE inventory_items SET stock_total = ?, unit_cost = ? WHERE id = ?')
+          .run(Number(stock_total), Math.max(0, Math.round(Number(unit_cost) || 0)), item_id);
+      } else {
+        db.prepare('UPDATE inventory_items SET stock_total = ? WHERE id = ?').run(Number(stock_total), item_id);
+      }
       return NextResponse.json({ success: true, message: 'Stok berhasil diperbarui' });
     }
 
@@ -66,12 +75,39 @@ export async function POST(req: Request) {
       if (!item || item.stock_total < countQty) {
         return NextResponse.json({ success: false, message: 'Stok barang tidak mencukupi' }, { status: 400 });
       }
-      db.prepare('UPDATE inventory_items SET stock_total = stock_total - ? WHERE id = ?').run(countQty, item_id);
-      db.prepare(`
-        INSERT INTO inventory_handover (transaction_id, item_id, qty, notes)
-        VALUES (?, ?, ?, ?)
-      `).run(transaction_id, item_id, countQty, notes || '');
-      return NextResponse.json({ success: true, message: 'Penyerahan barang berhasil dicatat' });
+      /*
+       * Stok keluar + HPP dicatat dalam SATU transaksi.
+       *
+       * Sebelumnya unit_cost tidak pernah dibaca, jadi nilai seragam/koper yang
+       * diserahkan ke jamaah tidak pernah masuk laporan keuangan. Sekarang nilai
+       * qty x unit_cost dijurnal (Dr Beban Perlengkapan / Cr Persediaan) dan
+       * ditautkan ke baris penyerahan lewat ledger.handover_id.
+       */
+      let hpp = 0;
+      let catatanHpp = '';
+      const proses = db.transaction(() => {
+        db.prepare('UPDATE inventory_items SET stock_total = stock_total - ? WHERE id = ?').run(countQty, item_id);
+        const info = db.prepare(`
+          INSERT INTO inventory_handover (transaction_id, item_id, qty, notes)
+          VALUES (?, ?, ?, ?)
+        `).run(transaction_id, item_id, countQty, notes || '');
+
+        const hasil = catatHppPenyerahan(
+          db, Number(info.lastInsertRowid), item_id, countQty,
+          'Penyerahan perlengkapan jamaah', transaction_id,
+        );
+        hpp = hasil.nilai;
+        catatanHpp = hasil.alasan || '';
+      });
+      proses();
+
+      return NextResponse.json({
+        success: true,
+        message: hpp > 0
+          ? `Penyerahan barang dicatat. HPP Rp ${hpp.toLocaleString('id-ID')} dijurnal.`
+          : `Penyerahan barang dicatat. HPP belum dijurnal: ${catatanHpp}`,
+        hpp,
+      });
     }
 
     return NextResponse.json({ success: false, message: 'Action tidak valid' }, { status: 400 });

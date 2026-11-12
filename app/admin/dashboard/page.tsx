@@ -682,8 +682,8 @@ function MasterInventaris() {
     }
   };
 
-  const updateStock = async (id:number, stock:string) => {
-    await fetch('/api/admin/inventory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'UPDATE_STOCK',item_id:id,stock_total:stock})});
+  const updateStock = async (id:number, stock:string, biaya?:string) => {
+    await fetch('/api/admin/inventory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'UPDATE_STOCK',item_id:id,stock_total:stock,unit_cost:biaya})});
     load();
   };
 
@@ -709,6 +709,13 @@ function MasterInventaris() {
               <FInput label="Nama Barang *" field="name" form={form} setForm={setForm} placeholder="Koper / Kain Ihram"/>
               <FInput label="Kategori" field="category" form={form} setForm={setForm} placeholder="Perlengkapan"/>
               <FInput label="Stok Awal" field="stock_total" type="number" form={form} setForm={setForm} placeholder="100"/>
+              <div>
+                <FInput label="Harga Satuan (Rp)" field="unit_cost" type="number" form={form} setForm={setForm} placeholder="150000"/>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Dipakai menghitung HPP saat barang diserahkan ke jamaah
+                  (Dr Beban Perlengkapan / Cr Persediaan).
+                </p>
+              </div>
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
               <button onClick={()=>setShowForm(false)} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
@@ -727,6 +734,7 @@ function MasterInventaris() {
               <th className="p-3">Kategori</th>
               <th className="p-3 text-center">Stok Total</th>
               <th className="p-3 text-center">Stok Keluar</th>
+              <th className="p-3 text-right">Harga Satuan</th>
               <th className="p-3 text-right">Aksi Update Stok</th>
             </tr>
           </thead>
@@ -739,11 +747,20 @@ function MasterInventaris() {
                 <td className="p-3 text-center font-mono font-bold text-emerald-600">{it.stock_total}</td>
                 <td className="p-3 text-center font-mono text-slate-600">{it.stock_out || 0}</td>
                 <td className="p-3 text-right">
-                  <input type="number" defaultValue={it.stock_total} onBlur={e=>updateStock(it.id, e.target.value)} className="w-20 border rounded-lg px-2 py-1 text-xs text-center font-mono" />
+                  <div className="flex items-center gap-1 justify-end">
+                    <span className="text-slate-400 text-[10px]">Rp</span>
+                    <input type="number" defaultValue={it.unit_cost || 0}
+                      onBlur={e=>updateStock(it.id, String(it.stock_total), e.target.value)}
+                      className={`w-24 border rounded-lg px-2 py-1 text-xs text-right font-mono ${Number(it.unit_cost)>0?'':'border-amber-300 bg-amber-50'}`}
+                      title={Number(it.unit_cost)>0?'Harga satuan':'Belum diisi — HPP tidak akan tercatat'} />
+                  </div>
+                </td>
+                <td className="p-3 text-right">
+                  <input type="number" defaultValue={it.stock_total} onBlur={e=>updateStock(it.id, e.target.value, String(it.unit_cost||0))} className="w-20 border rounded-lg px-2 py-1 text-xs text-center font-mono" />
                 </td>
               </tr>
             ))}
-            {items.length===0 && <tr><td colSpan={6} className="text-center py-8 text-slate-400">Belum ada barang perlengkapan terdaftar.</td></tr>}
+            {items.length===0 && <tr><td colSpan={7} className="text-center py-8 text-slate-400">Belum ada barang perlengkapan terdaftar.</td></tr>}
           </tbody>
         </table>
       </div>

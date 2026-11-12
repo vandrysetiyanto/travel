@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { requirePermission } from '@/lib/permissions';
+import { catatHppPenyerahan, hapusHppPenyerahan } from '@/lib/persediaan';
 
 initDB();
 
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
       }
 
       // Check if linked to inventory
+      let hppDicatat = 0;
       const masterItem = db.prepare('SELECT * FROM checklist_master WHERE id = ?').get(checklist_master_id) as any;
       const current = db.prepare('SELECT status FROM jamaah_checklist WHERE jamaah_id = ? AND checklist_master_id = ?').get(jamaah_id, checklist_master_id) as any;
       const oldStatus = current ? current.status : 'BELUM';
@@ -86,8 +88,9 @@ export async function POST(request: Request) {
           const simpan = db.transaction(() => {
             db.prepare('UPDATE inventory_items SET stock_total = MAX(0, stock_total - 1) WHERE id = ?')
               .run(masterItem.inventory_item_id);
+            // HPP dicatat setelah baris penyerahan dibuat (butuh handover_id).
             if (booking?.transaction_id) {
-              db.prepare(`
+              const info = db.prepare(`
                 INSERT INTO inventory_handover (item_id, qty, transaction_id, jamaah_id, handed_over_at, notes)
                 VALUES (?, 1, ?, ?, CURRENT_TIMESTAMP, ?)
               `).run(
@@ -96,6 +99,11 @@ export async function POST(request: Request) {
                 jamaah_id,
                 `Diserahkan ke jamaah #${jamaah_id} - ${masterItem.item_name}`,
               );
+              const hasil = catatHppPenyerahan(
+                db, Number(info.lastInsertRowid), masterItem.inventory_item_id, 1,
+                `Checklist: ${masterItem.item_name}`, booking.transaction_id,
+              );
+              hppDicatat = hasil.nilai;
             }
           });
           simpan();
@@ -107,13 +115,23 @@ export async function POST(request: Request) {
             const terakhir = db
               .prepare(`SELECT id FROM inventory_handover WHERE item_id = ? AND jamaah_id = ? ORDER BY id DESC LIMIT 1`)
               .get(masterItem.inventory_item_id, jamaah_id) as { id: number } | undefined;
-            if (terakhir) db.prepare('DELETE FROM inventory_handover WHERE id = ?').run(terakhir.id);
+            if (terakhir) {
+              // Ledger HPP harus ikut hilang agar beban tidak menggantung.
+              hapusHppPenyerahan(db, terakhir.id);
+              db.prepare('DELETE FROM inventory_handover WHERE id = ?').run(terakhir.id);
+            }
           });
           simpan();
         }
       }
 
-      return NextResponse.json({ success: true, message: 'Status checklist berhasil diperbarui' });
+      return NextResponse.json({
+        success: true,
+        message: hppDicatat > 0
+          ? `Status checklist diperbarui. HPP Rp ${hppDicatat.toLocaleString('id-ID')} dijurnal.`
+          : 'Status checklist berhasil diperbarui',
+        hpp: hppDicatat,
+      });
     }
 
     if (action === 'SAVE_MASTER') {

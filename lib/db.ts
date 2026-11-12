@@ -320,6 +320,9 @@ export function initDB() {
   // Barang bisa diserahkan ke orang tertentu, bukan hanya ke booking.
   ensureColumn('inventory_handover', 'jamaah_id', 'jamaah_id INTEGER');
 
+  // HPP perlengkapan ditautkan ke baris penyerahan agar bisa ditelusuri/dibatalkan.
+  ensureColumn('ledger', 'handover_id', 'handover_id INTEGER REFERENCES inventory_handover(id) ON DELETE CASCADE');
+
   // Menu yang boleh dibuka per role TANPA izin dasarnya (pengecualian pemilik).
   // Contoh: role FINANCE tetap diberi akses menu Kasir walau bukan admin kasir.
   db.exec(`
@@ -564,6 +567,17 @@ export function initDB() {
 }
 
 initDB();
+
+  // Akun beban perlengkapan jamaah (dipakai HPP persediaan saat barang diserahkan).
+  try {
+    const adaBeban = db.prepare("SELECT 1 FROM chart_of_accounts WHERE coa_code = '5-109'").get();
+    if (!adaBeban) {
+      db.prepare(`INSERT INTO chart_of_accounts (coa_code, coa_name, coa_type, coa_group, is_active)
+                  VALUES ('5-109','Beban Perlengkapan Jamaah','OPERATIONAL','Beban',1)`).run();
+    }
+  } catch (e) {
+    console.error('[initDB] akun 5-109 gagal dibuat:', (e as Error).message);
+  }
 
   // Seed Checklist Master
   const checkCM = db.prepare('SELECT COUNT(*) as count FROM checklist_master').get() as { count: number };
