@@ -1633,6 +1633,11 @@ function KelolaIzinRole() {
   const [tab, setTab] = useState<'menu' | 'izin'>('menu');
   const [loading, setLoading] = useState(false);
   const [simpan, setSimpan] = useState<'idle'|'saving'>('idle');
+  const [orphan, setOrphan] = useState<any[]>([]);
+  const [modal, setModal] = useState<null | 'tambah' | 'ubah'>(null);
+  const [kodeBaru, setKodeBaru] = useState('');
+  const [namaBaru, setNamaBaru] = useState('');
+  const [namaEdit, setNamaEdit] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -1654,6 +1659,7 @@ function KelolaIzinRole() {
       }
       setLoading(false);
     }).catch(() => setLoading(false));
+    muatOrphan();
   };
   useEffect(() => { load(); }, []);
 
@@ -1708,6 +1714,67 @@ function KelolaIzinRole() {
     }
   };
 
+  const muatOrphan = () => {
+    fetch('/api/admin/roles/orphan').then(r => r.json())
+      .then(d => { if (d.success) setOrphan(d.users || []); }).catch(() => {});
+  };
+  useEffect(() => { muatOrphan(); }, []);
+
+  const toast = (msg: string, jenis: 'success' | 'error' = 'success') => {
+    (window as any).__showAdminToast
+      ? (window as any).__showAdminToast(msg, jenis)
+      : alert(msg);
+  };
+
+  const tambahRole = async () => {
+    setSimpan('saving');
+    const res = await fetch('/api/admin/roles', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'CREATE_ROLE', code: kodeBaru, name: namaBaru }),
+    });
+    const d = await res.json();
+    setSimpan('idle');
+    if (d.success) {
+      setModal(null); setKodeBaru(''); setNamaBaru('');
+      load(); toast(d.message);
+    } else toast(d.message, 'error');
+  };
+
+  const ubahRole = async () => {
+    setSimpan('saving');
+    const res = await fetch('/api/admin/roles', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'UPDATE_ROLE', code: aktif, name: namaEdit }),
+    });
+    const d = await res.json();
+    setSimpan('idle');
+    if (d.success) { setModal(null); load(); toast(d.message); }
+    else toast(d.message, 'error');
+  };
+
+  const hapusRole = async (code: string) => {
+    if (!confirm(`Hapus role ${code}? Tindakan ini tidak bisa dibatalkan.`)) return;
+    setSimpan('saving');
+    const res = await fetch('/api/admin/roles', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'DELETE_ROLE', code }),
+    });
+    const d = await res.json();
+    setSimpan('idle');
+    if (d.success) { setAktif(''); load(); muatOrphan(); toast(d.message); }
+    else toast(d.message, 'error');
+  };
+
+  const perbaikiOrphan = async (userId: number, role: string) => {
+    const res = await fetch('/api/admin/roles/orphan', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, role }),
+    });
+    const d = await res.json();
+    if (d.success) { load(); muatOrphan(); toast(d.message); }
+    else toast(d.message, 'error');
+  };
+
   const roleAktif = roles.find(r => r.code === aktif);
   const modulUnik = Array.from(new Set(perms.map(p => p.module)));
   const izinRole = matriks[aktif] || [];
@@ -1728,7 +1795,96 @@ function KelolaIzinRole() {
           <b> tindakan apa yang boleh dilakukan</b>. Menu bisa ditambah di luar izin dasar
           (mis. role Keuangan tetap diberi menu Kasir), tetapi menu pengaturan/akses tidak bisa dibuka lewat pengecualian.
         </p>
+        <div className="flex flex-wrap items-center gap-2 mt-4">
+          <button onClick={() => setModal('tambah')}
+            className="px-3.5 py-2 text-xs font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800">
+            + Tambah Role
+          </button>
+          {roleAktif && !roleAktif.is_system && (
+            <>
+              <button onClick={() => { setNamaEdit(roleAktif.name); setModal('ubah'); }}
+                className="px-3.5 py-2 text-xs font-bold text-slate-700 rounded-xl border border-slate-200 hover:bg-slate-50">
+                Ubah Nama
+              </button>
+              <button onClick={() => hapusRole(roleAktif.code)}
+                className="px-3.5 py-2 text-xs font-bold text-red-600 rounded-xl border border-red-200 hover:bg-red-50">
+                Hapus Role
+              </button>
+            </>
+          )}
+          {roleAktif && !!roleAktif.is_system && (
+            <span className="text-[11px] text-slate-400">Role sistem — tidak bisa diubah namanya atau dihapus</span>
+          )}
+        </div>
       </div>
+
+      {orphan.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+          <p className="text-sm font-black text-amber-900">
+            {orphan.length} pengguna memakai role yang tidak terdaftar
+          </p>
+          <p className="text-xs text-amber-800 mt-1">
+            Mereka <b>tidak punya izin apa pun</b> (default tolak) sampai role-nya diperbaiki.
+          </p>
+          <div className="mt-3 space-y-1.5">
+            {orphan.map((u: any) => (
+              <div key={u.id} className="flex flex-wrap items-center justify-between gap-2 bg-white/70 rounded-xl px-3 py-2">
+                <span className="text-xs text-slate-700">
+                  {u.name} <span className="text-slate-400">· {u.email}</span>{' '}
+                  <span className="font-mono text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded">{u.role}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <select defaultValue="" onChange={(e) => e.target.value && perbaikiOrphan(u.id, e.target.value)}
+                    className="text-[11px] border border-slate-200 rounded-lg px-2 py-1 bg-white">
+                    <option value="">Pilih role…</option>
+                    {roles.map((r: any) => <option key={r.code} value={r.code}>{r.code}</option>)}
+                  </select>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {modal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setModal(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h4 className="text-sm font-black text-slate-900">
+              {modal === 'tambah' ? 'Tambah Role Baru' : `Ubah Nama Role ${aktif}`}
+            </h4>
+            <p className="text-[11px] text-slate-500 mt-1">
+              {modal === 'tambah'
+                ? 'Role baru mulai tanpa izin. Centang izinnya setelah role dibuat.'
+                : 'Kode role tidak berubah — hanya label yang ditampilkan.'}
+            </p>
+
+            {modal === 'tambah' && (
+              <div className="mt-3">
+                <label className="text-[11px] font-bold text-slate-600">Kode Role</label>
+                <input value={kodeBaru} onChange={(e) => setKodeBaru(e.target.value.toUpperCase())}
+                  placeholder="mis. GUDANG"
+                  className="w-full mt-1 px-3 py-2 text-sm border border-slate-200 rounded-xl font-mono" />
+              </div>
+            )}
+            <div className="mt-3">
+              <label className="text-[11px] font-bold text-slate-600">Nama Tampilan</label>
+              <input value={modal === 'tambah' ? namaBaru : namaEdit}
+                onChange={(e) => modal === 'tambah' ? setNamaBaru(e.target.value) : setNamaEdit(e.target.value)}
+                placeholder="mis. Petugas Gudang"
+                className="w-full mt-1 px-3 py-2 text-sm border border-slate-200 rounded-xl" />
+            </div>
+
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setModal(null)}
+                className="px-3.5 py-2 text-xs font-bold text-slate-600 rounded-xl hover:bg-slate-100">Batal</button>
+              <button onClick={modal === 'tambah' ? tambahRole : ubahRole} disabled={simpan === 'saving'}
+                className="px-4 py-2 text-xs font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-40">
+                {simpan === 'saving' ? 'Menyimpan…' : 'Simpan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="bg-white rounded-2xl border border-slate-200/80 p-8 text-center text-slate-400 text-sm">Memuat…</div>
