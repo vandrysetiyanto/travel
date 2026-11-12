@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { requirePermission, catatAudit } from '@/lib/permissions';
-import { tulisLedger } from '@/lib/ledger';
+import { tulisLedger, akunKasDefault } from '@/lib/ledger';
+import { labaRugi, neraca, arusKas } from '@/lib/laporan';
 
 initDB();
 
@@ -17,135 +18,68 @@ export async function GET(request: Request) {
     const month = searchParams.get('month');
     const year = searchParams.get('year');
 
-    let dateCondition = '';
-    let params: any[] = [];
+    /*
+     * Rentang tanggal untuk laporan.
+     *
+     * Semua laporan (laba rugi, neraca, arus kas) diambil dari BUKU BESAR
+     * (tabel `ledger`), bukan dari tabel `expenses` dan bukan dari angka
+     * hardcode. Dengan begitu apa pun yang dijurnal — pembayaran jamaah, beban
+     * operasional, jurnal umum, dan HPP perlengkapan — otomatis tercermin dan
+     * angkanya bisa dipertanggungjawabkan.
+     */
+    let dari: string | null = null;
+    let sampai: string | null = null;
 
     if (period === 'DAILY' && date) {
-      dateCondition = 'WHERE DATE(created_at) = ?';
-      params.push(date);
+      dari = date; sampai = date;
     } else if (period === 'MONTHLY' && month) {
-      dateCondition = 'WHERE strftime("%Y-%m", created_at) = ?';
-      params.push(month);
+      dari = `${month}-01`;
+      const [y, m] = month.split('-').map(Number);
+      sampai = new Date(y, m, 0).toISOString().slice(0, 10); // hari terakhir bulan
     } else if (period === 'YEARLY' && year) {
-      dateCondition = 'WHERE strftime("%Y", created_at) = ?';
-      params.push(year);
+      dari = `${year}-01-01`; sampai = `${year}-12-31`;
     }
 
-    // Transactions / Revenue
-    const transactions = db.prepare(`SELECT * FROM transactions ${dateCondition}`).all(...params);
-    const total_revenue = transactions.reduce((acc: number, curr: any) => acc + (curr.total_price || 0), 0);
-    const total_paid = transactions.reduce((acc: number, curr: any) => acc + (curr.paid_amount || 0), 0);
-    const total_outstanding = transactions.reduce((acc: number, curr: any) => acc + (curr.remaining_amount || 0), 0);
+    const rentang = { dari, sampai };
 
-    // Expenses
-    let expCondition = '';
-    let expParams: any[] = [];
-    if (period === 'DAILY' && date) {
-      expCondition = 'WHERE expense_date = ?';
-      expParams.push(date);
-    } else if (period === 'MONTHLY' && month) {
-      expCondition = 'WHERE strftime("%Y-%m", expense_date) = ?';
-      expParams.push(month);
-    } else if (period === 'YEARLY' && year) {
-      expCondition = 'WHERE strftime("%Y", expense_date) = ?';
-      expParams.push(year);
-    }
+    const lr = labaRugi(db, rentang);
+    const nc = neraca(db, rentang);
+    const ak = arusKas(db, rentang);
 
-    const expenses = db.prepare(`
-      SELECT e.*, coa.coa_code, coa.coa_name, coa.coa_group
-      FROM expenses e
-      LEFT JOIN chart_of_accounts coa ON e.coa_account_id = coa.id
-      ${expCondition}
-    `).all(...expParams);
-    const total_expenses = expenses.reduce((acc: number, curr: any) => acc + (curr.amount || 0), 0);
-
-    // Expenses grouped by COA
-    const expenses_by_group: any = {};
-    expenses.forEach((ex: any) => {
-      const key = (ex.coa_code || '999') + ' - ' + (ex.coa_name || 'Beban Lainnya');
-      if (!expenses_by_group[key]) {
-        expenses_by_group[key] = { coa_code: ex.coa_code || '999', coa_name: ex.coa_name || 'Beban Lainnya', total_expense: 0 };
-      }
-      expenses_by_group[key].total_expense += ex.amount;
-    });
-
-    const gross_profit = total_paid - total_expenses;
-
-    // Neraca structure expected by NeracaTab
-    const persediaan_gudang = 5000000;
-    const total_aset = (total_paid - total_expenses) + total_outstanding + persediaan_gudang;
-    const hutang_vendor = Math.round(total_outstanding * 0.3);
-    const pendapatan_dimuka = total_paid;
-    const total_liabilitas = hutang_vendor + pendapatan_dimuka;
-    const modal_disetor = 50000000;
-    const total_ekuitas = modal_disetor + gross_profit;
-
-    const neraca = {
-      aset: {
-        kas_bank: total_paid - total_expenses,
-        piutang_jamaah: total_outstanding,
-        persediaan: persediaan_gudang,
-        total_aset
-      },
-      liabilitas: {
-        hutang_vendor,
-        pendapatan_diterima_dimuka: pendapatan_dimuka,
-        total_liabilitas
-      },
-      ekuitas: {
-        modal_disetor,
-        laba_ditahan: gross_profit,
-        total_ekuitas
-      }
-    };
-
-    // Arus Kas structure expected by ArusKasTab
-    const kas_awal = 50000000;
-    const kas_bersih_operasi = total_paid - total_expenses;
-    const kas_bersih_investasi = 0;
-    const kas_bersih_pendanaan = 0;
-    const perubahan_bersih = kas_bersih_operasi + kas_bersih_investasi + kas_bersih_pendanaan;
-    const kas_akhir = kas_awal + perubahan_bersih;
-
-    const arus_kas = {
-      kas_awal,
-      kas_akhir,
-      perubahan_bersih,
-      aktivitas_operasi: {
-        penerimaan_dari_jamaah: total_paid,
-        pembayaran_beban_operasional: total_expenses,
-        pembayaran_vendor: Math.round(total_expenses * 0.7),
-        kas_bersih_operasi
-      },
-      aktivitas_investasi: {
-        pembelian_aset: 0,
-        kas_bersih_investasi
-      },
-      aktivitas_pendanaan: {
-        setoran_modal: 0,
-        kas_bersih_pendanaan
-      }
-    };
+    // Konteks tagihan (bukan bagian pembukuan): dipakai kartu ringkasan.
+    const tagihan = db
+      .prepare(`SELECT COALESCE(SUM(paid_amount),0) AS dibayar, COALESCE(SUM(remaining_amount),0) AS sisa FROM transactions`)
+      .get() as { dibayar: number; sisa: number };
 
     return NextResponse.json({
       success: true,
       period,
+      rentang,
+      sumber: 'ledger',
       summary: {
-        total_revenue,
-        total_paid,
-        total_outstanding,
-        total_expenses,
-        gross_profit
+        total_revenue: lr.total_pendapatan,
+        total_paid: Number(tagihan.dibayar) || 0,
+        total_outstanding: Number(tagihan.sisa) || 0,
+        total_expenses: lr.total_beban,
+        gross_profit: lr.laba_bersih,
       },
       laba_rugi: {
-        total_revenue,
-        total_paid,
-        total_expenses,
-        gross_profit,
-        expenses_by_group: Object.values(expenses_by_group)
+        // Nama yang dipakai UI.
+        total_pendapatan: lr.total_pendapatan,
+        total_beban: lr.total_beban,
+        laba_bersih: lr.laba_bersih,
+        // Alias lama supaya pemanggil lain tidak rusak.
+        total_revenue: lr.total_pendapatan,
+        total_expenses: lr.total_beban,
+        gross_profit: lr.laba_bersih,
+        expenses_by_group: lr.beban.map((b: any) => ({
+          coa_code: b.coa_code, coa_name: b.coa_name, total_expense: b.total,
+        })),
+        rincian_pendapatan: lr.pendapatan,
+        rincian_beban: lr.beban,
       },
-      neraca,
-      arus_kas
+      neraca: nc,
+      arus_kas: ak,
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
@@ -222,7 +156,7 @@ export async function POST(request: Request) {
     if (action === 'GET_EXPENSES') {
       { const cek = await requirePermission(request, 'journal.read'); if (!cek.ok) return cek.response; }
       const expenses = db.prepare(`
-        SELECT e.*, coa.coa_code, coa.coa_name
+        SELECT e.*, e.expense_date AS date, e.expense_date AS tanggal, coa.coa_code, coa.coa_name
         FROM expenses e
         LEFT JOIN chart_of_accounts coa ON e.coa_account_id = coa.id
         ORDER BY e.expense_date DESC, e.id DESC
@@ -250,13 +184,33 @@ export async function POST(request: Request) {
         `).run(coa_account_id, amount, description || '', tgl, auth.user?.email || 'Admin');
         const expenseId = Number(res.lastInsertRowid);
 
+        /*
+         * Jurnal beban WAJIB dua sisi: Dr akun beban / Cr Kas & Bank.
+         *
+         * Sebelumnya hanya sisi KREDIT yang ditulis, sehingga:
+         *   - saldo beban jadi NEGATIF (beban normalnya di sisi debit)
+         *   - kas tidak pernah berkurang di neraca
+         *   - total debit dan kredit di buku besar tidak seimbang
+         */
         tulisLedger(
           { expenseId },
           {
             coaAccountId: Number(coa_account_id),
-            entryType: 'CREDIT',
+            entryType: 'DEBIT',
             amount: Number(amount),
             description: description || 'Beban Operasional',
+            entryDate: tgl,
+          },
+        );
+
+        const kas = akunKasDefault();
+        tulisLedger(
+          { expenseId },
+          {
+            coaAccountId: kas ?? Number(coa_account_id),
+            entryType: 'CREDIT',
+            amount: Number(amount),
+            description: `Pembayaran ${description || 'Beban Operasional'}`,
             entryDate: tgl,
           },
         );

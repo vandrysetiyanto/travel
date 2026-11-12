@@ -3923,9 +3923,18 @@ function LabaRugiTab({ isOwner }: { isOwner: boolean }) {
         <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
           <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider border-b pb-3">Rincian Pendapatan</h4>
           <div className="space-y-3 text-xs">
-            <div className="flex justify-between items-center py-2 border-b border-slate-100">
-              <span className="text-slate-600 font-medium">Pembayaran Tiket & Paket Umroh</span>
-              <span className="font-mono font-bold text-slate-900">{fmtRp(lr.total_pendapatan)}</span>
+            {(lr.rincian_pendapatan && lr.rincian_pendapatan.length > 0 ? lr.rincian_pendapatan : []).map((r: any) => (
+              <div key={r.coa_code} className="flex justify-between items-center py-2 border-b border-slate-100">
+                <span className="text-slate-600 font-medium">{r.coa_name} <span className="font-mono text-[10px] text-slate-400">{r.coa_code}</span></span>
+                <span className="font-mono font-bold text-slate-900">{fmtRp(r.total)}</span>
+              </div>
+            ))}
+            {(!lr.rincian_pendapatan || lr.rincian_pendapatan.length === 0) && (
+              <p className="text-xs text-slate-400 text-center py-4">Belum ada pendapatan terjurnal.</p>
+            )}
+            <div className="flex justify-between items-center py-2 font-black text-slate-900">
+              <span>Total Pendapatan</span>
+              <span className="font-mono">{fmtRp(lr.total_pendapatan)}</span>
             </div>
           </div>
         </div>
@@ -3936,17 +3945,27 @@ function LabaRugiTab({ isOwner }: { isOwner: boolean }) {
             <span className="text-xs font-mono font-bold text-rose-600">{fmtRp(lr.total_beban)}</span>
           </div>
           <div className="space-y-2 max-h-60 overflow-y-auto">
-            {expensesList.map((ex: any) => (
-              <div key={ex.id} className="bg-slate-50 border border-slate-200/60 rounded-xl p-3 flex justify-between items-center text-xs">
+            {/*
+              * Rincian beban diambil dari BUKU BESAR (semua akun grup Beban),
+              * bukan hanya tabel `expenses`. Dengan begitu beban dari jurnal umum
+              * dan HPP perlengkapan jamaah (5-109) ikut terlihat.
+              */}
+            {(lr.rincian_beban || []).map((b: any) => (
+              <div key={b.coa_code} className="bg-slate-50 border border-slate-200/60 rounded-xl p-3 flex justify-between items-center text-xs">
                 <div>
-                  <p className="font-bold text-slate-900">{ex.description}</p>
-                  <p className="text-[10px] text-slate-500">{ex.date} | Akun: {ex.coa_name || 'Beban'}</p>
+                  <p className="font-bold text-slate-900">{b.coa_name}</p>
+                  <p className="text-[10px] text-slate-500 font-mono">{b.coa_code}</p>
                 </div>
-                <span className="font-mono font-bold text-rose-600">{fmtRp(ex.amount)}</span>
+                <span className="font-mono font-bold text-rose-600">{fmtRp(b.total)}</span>
               </div>
             ))}
-            {expensesList.length === 0 && (
-              <p className="text-xs text-slate-400 text-center py-4">Belum ada catatan beban operasional.</p>
+            {(!lr.rincian_beban || lr.rincian_beban.length === 0) && (
+              <p className="text-xs text-slate-400 text-center py-4">Belum ada beban terjurnal.</p>
+            )}
+            {expensesList.length > 0 && (
+              <p className="text-[10px] text-slate-400 text-center pt-1">
+                {expensesList.length} catatan beban terperinci tersedia di menu Beban Operasional.
+              </p>
             )}
           </div>
         </div>
@@ -4107,7 +4126,10 @@ function NeracaTab() {
         </div>
       </div>
       <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-xs">
-        <p className="text-xs text-slate-400 text-center">Aset = Liabilitas + Ekuitas → {fmtRp(n.aset.total_aset)} = {fmtRp(n.liabilitas.total_liabilitas)} + {fmtRp(n.ekuitas.total_ekuitas)}</p>
+        <p className={`text-xs text-center font-bold ${n.seimbang ? 'text-emerald-600' : 'text-rose-600'}`}>
+          Aset = Liabilitas + Ekuitas → {fmtRp(n.aset.total_aset)} = {fmtRp(n.liabilitas.total_liabilitas)} + {fmtRp(n.ekuitas.total_ekuitas)}
+          {n.seimbang ? ' ✓ seimbang' : ` ⚠ selisih ${fmtRp(n.selisih)}`}
+        </p>
       </div>
     </div>
   );
