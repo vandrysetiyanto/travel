@@ -4,6 +4,8 @@ import { requireAdmin } from '@/lib/auth';
 import { requirePermission, catatAudit } from '@/lib/permissions';
 import { tulisLedger, akunKasDefault } from '@/lib/ledger';
 import { labaRugi, neraca, arusKas } from '@/lib/laporan';
+import { validasiNominal, validasiJurnal } from '@/lib/uang';
+import { tanggalWib, tanggalValid, keTanggalWib } from '@/lib/waktu';
 
 initDB();
 
@@ -167,10 +169,43 @@ export async function POST(request: Request) {
     if (action === 'ADD_EXPENSE') {
       { const cek = await requirePermission(request, 'expense.manage'); if (!cek.ok) return cek.response; }
       const { coa_account_id, amount, description, expense_date } = body;
-      if (!coa_account_id || !amount) {
-        return NextResponse.json({ success: false, message: 'Akun dan jumlah beban wajib diisi' }, { status: 400 });
+      if (!coa_account_id) {
+        return NextResponse.json({ success: false, message: 'Akun beban wajib dipilih' }, { status: 400 });
       }
-      const tgl = expense_date || new Date().toISOString().split('T')[0];
+
+      /*
+       * Nominal divalidasi lewat satu pintu (lib/uang.ts): wajib angka wajar,
+       * bulat, >= 1. Sebelumnya cukup `if (!amount)` sehingga -5.000.000 lolos
+       * dan tersimpan sebagai beban negatif — pendapatan palsu yang
+       * menggelembungkan laba.
+       */
+      const cekNominal = validasiNominal(amount, 'Nominal beban');
+      if (!cekNominal.ok) {
+        return NextResponse.json({ success: false, message: cekNominal.pesan }, { status: 400 });
+      }
+
+      const akunBeban = db.prepare('SELECT id, coa_group FROM chart_of_accounts WHERE id = ?').get(coa_account_id) as
+        | { id: number; coa_group: string }
+        | undefined;
+      if (!akunBeban) {
+        return NextResponse.json({ success: false, message: 'Akun beban tidak ditemukan' }, { status: 404 });
+      }
+      if (String(akunBeban.coa_group) !== 'Beban') {
+        return NextResponse.json({
+          success: false,
+          message: `Akun ${coa_account_id} bukan akun Beban (grup: ${akunBeban.coa_group}). Pilih akun dari grup Beban.`,
+        }, { status: 400 });
+      }
+
+      /*
+       * Tanggal default memakai WIB, bukan UTC. Dulu
+       * `new Date().toISOString().slice(0,10)` membuat beban pukul 00:00–06:59
+       * WIB tercatat pada tanggal kemarin.
+       */
+      const tgl = expense_date ? String(expense_date).slice(0, 10) : tanggalWib();
+      if (!tanggalValid(tgl)) {
+        return NextResponse.json({ success: false, message: 'Format tanggal beban tidak valid (YYYY-MM-DD).' }, { status: 400 });
+      }
 
       /*
        * Beban dan baris buku besarnya ditulis dalam satu transaksi, dan baris
@@ -197,7 +232,7 @@ export async function POST(request: Request) {
           {
             coaAccountId: Number(coa_account_id),
             entryType: 'DEBIT',
-            amount: Number(amount),
+            amount: cekNominal.nilai,
             description: description || 'Beban Operasional',
             entryDate: tgl,
           },
@@ -209,7 +244,7 @@ export async function POST(request: Request) {
           {
             coaAccountId: kas ?? Number(coa_account_id),
             entryType: 'CREDIT',
-            amount: Number(amount),
+            amount: cekNominal.nilai,
             description: `Pembayaran ${description || 'Beban Operasional'}`,
             entryDate: tgl,
           },
@@ -262,11 +297,25 @@ export async function POST(request: Request) {
     if (action === 'ADD_JOURNAL') {
       { const cek = await requirePermission(request, 'journal.create'); if (!cek.ok) return cek.response; }
       const { journal_date, reference_no, description, debit_coa_id, credit_coa_id, amount } = body;
-      if (!journal_date || !debit_coa_id || !credit_coa_id || !amount) {
-        return NextResponse.json({ success: false, message: 'Semua field wajib diisi (Tanggal, Akun Debit, Akun Kredit, Jumlah)' }, { status: 400 });
+      if (!journal_date) {
+        return NextResponse.json({ success: false, message: 'Tanggal jurnal wajib diisi' }, { status: 400 });
       }
-      if (Number(debit_coa_id) === Number(credit_coa_id)) {
-        return NextResponse.json({ success: false, message: 'Akun debit dan kredit tidak boleh sama' }, { status: 400 });
+
+      /*
+       * Validasi jurnal dua sisi lewat satu pintu: akun debit & kredit wajib
+       * berbeda dan keduanya ada di COA, nominal wajib wajar (>= 1).
+       * Sebelumnya nominal negatif bisa tersimpan sebagai jurnal umum,
+       * sehingga sisi debit/kredit terbalik tanpa jejak kesalahan.
+       */
+      const cekJurnal = validasiJurnal(debit_coa_id, credit_coa_id, amount);
+      if (!cekJurnal.ok) {
+        return NextResponse.json({ success: false, message: cekJurnal.pesan }, { status: 400 });
+      }
+      const akunAda = db
+        .prepare('SELECT COUNT(*) c FROM chart_of_accounts WHERE id IN (?, ?)')
+        .get(cekJurnal.debit, cekJurnal.kredit) as { c: number };
+      if (Number(akunAda.c) !== 2) {
+        return NextResponse.json({ success: false, message: 'Akun debit/kredit tidak ditemukan di COA' }, { status: 404 });
       }
 
       const refNo = reference_no || 'JRN-' + Math.floor(1000 + Math.random() * 9000);
@@ -285,11 +334,11 @@ export async function POST(request: Request) {
 
         tulisLedger(
           { journalId },
-          { coaAccountId: Number(debit_coa_id), entryType: 'DEBIT', amount: Number(amount), description: description || 'Jurnal Umum', entryDate: journal_date, reference: refNo },
+          { coaAccountId: cekJurnal.debit, entryType: 'DEBIT', amount: cekJurnal.nilai, description: description || 'Jurnal Umum', entryDate: journal_date, reference: refNo },
         );
         tulisLedger(
           { journalId },
-          { coaAccountId: Number(credit_coa_id), entryType: 'CREDIT', amount: Number(amount), description: description || 'Jurnal Umum', entryDate: journal_date, reference: refNo },
+          { coaAccountId: cekJurnal.kredit, entryType: 'CREDIT', amount: cekJurnal.nilai, description: description || 'Jurnal Umum', entryDate: journal_date, reference: refNo },
         );
 
         return journalId;

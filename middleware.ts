@@ -21,6 +21,28 @@ async function hasValidSession(req: NextRequest): Promise<boolean> {
   }
 }
 
+/**
+ * Header keamanan dasar.
+ *
+ * Sebelumnya aplikasi tidak mengirim satu pun header pengaman, sehingga halaman
+ * admin bisa dibingkai di iframe situs lain (clickjacking: tombol palsu di atas
+ * tombol asli) dan browser bebas menebak tipe berkas.
+ *
+ * CSP sengaja TIDAK dipasang ketat di sini: aplikasi memakai inline style/script
+ * dari Next sehingga CSP yang salah akan mematikan UI. Yang dipasang hanya
+ * header yang aman tanpa risiko merusak tampilan.
+ */
+function pasangHeaderKeamanan(res: NextResponse): NextResponse {
+  res.headers.set('X-Frame-Options', 'SAMEORIGIN');            // cegah clickjacking
+  res.headers.set('X-Content-Type-Options', 'nosniff');        // jangan tebak MIME
+  res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.headers.set('X-DNS-Prefetch-Control', 'off');
+  res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // HSTS hanya masuk akal di HTTPS; browser mengabaikannya pada http.
+  res.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  return res;
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -31,28 +53,31 @@ export async function middleware(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = '/admin/dashboard';
     url.search = '';
-    return NextResponse.redirect(url);
+    return pasangHeaderKeamanan(NextResponse.redirect(url));
   }
 
   // Halaman & endpoint login WAJIB tetap terbuka tanpa sesi. Tanpa pengecualian ini
   // middleware memblokir /admin/login dan me-redirect ke dirinya sendiri (loop tak berujung).
-  if (pathname === '/admin/login' || pathname === '/api/admin/login') return NextResponse.next();
+  if (pathname === '/admin/login' || pathname === '/api/admin/login') {
+    return pasangHeaderKeamanan(NextResponse.next());
+  }
 
   if (!valid) {
     // API -> balas JSON 401, jangan redirect (fetch() akan error kalau di-redirect ke HTML).
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ success: false, message: 'Belum login atau sesi kedaluwarsa.' }, { status: 401 });
+      return pasangHeaderKeamanan(
+        NextResponse.json({ success: false, message: 'Belum login atau sesi kedaluwarsa.' }, { status: 401 }),
+      );
     }
     const url = req.nextUrl.clone();
     url.pathname = '/admin/login';
     url.searchParams.set('next', pathname);
-    return NextResponse.redirect(url);
+    return pasangHeaderKeamanan(NextResponse.redirect(url));
   }
 
-  return NextResponse.next();
+  return pasangHeaderKeamanan(NextResponse.next());
 }
 
-// Semua halaman admin + semua API admin WAJIB sesi, kecuali endpoint login.
 export const config = {
   matcher: ['/admin/:path*', '/api/admin/:path*'],
 };

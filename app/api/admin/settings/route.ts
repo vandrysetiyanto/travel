@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin, requireOwner } from '@/lib/auth';
-import { requirePermission } from '@/lib/permissions';
+import { requirePermission, catatAudit } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +45,8 @@ export async function POST(req: NextRequest) {
           tagline = excluded.tagline,
           updated_at = CURRENT_TIMESTAMP
       `).run(profile);
+      catatAudit({ user: auth.user, action: 'UPDATE', module: 'settings', notes: 'Profil perusahaan berhasil diperbarui' });
+
       return NextResponse.json({ success: true, message: 'Profil perusahaan berhasil diperbarui' });
     }
 
@@ -53,11 +55,15 @@ export async function POST(req: NextRequest) {
         INSERT INTO bank_accounts (bank_name, account_number, account_holder)
         VALUES (@bank_name, @account_number, @account_holder)
       `).run(bank);
+      catatAudit({ user: auth.user, action: 'UPDATE', module: 'settings', notes: 'Rekening bank berhasil ditambahkan' });
+
       return NextResponse.json({ success: true, message: 'Rekening bank berhasil ditambahkan' });
     }
 
     if (action === 'DELETE_BANK' && body.id) {
       db.prepare('DELETE FROM bank_accounts WHERE id = ?').run(body.id);
+      catatAudit({ user: auth.user, action: 'UPDATE', module: 'settings', notes: 'Rekening bank berhasil dihapus' });
+
       return NextResponse.json({ success: true, message: 'Rekening bank berhasil dihapus' });
     }
 

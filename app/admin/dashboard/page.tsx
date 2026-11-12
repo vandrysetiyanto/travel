@@ -1,5 +1,10 @@
 'use client';
 
+/* Tanggal hari ini menurut WIB — jangan pakai toISOString() yang berbasis UTC,
+   karena pukul 00:00–06:59 WIB akan menghasilkan tanggal kemarin. */
+const hariIniWib = () =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+
 /* ===================== EMPTY STATE HELPER ===================== */
 function EmptyState({ icon, title, description, actionText, onAction }: {
   icon: string; title: string; description: string; actionText?: string; onAction?: () => void;
@@ -3084,7 +3089,7 @@ function GeneralJournalTab() {
   const [journals, setJournals] = useState<any[]>([]);
   const [coaList, setCoaList] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ journal_date: new Date().toISOString().split('T')[0], debit_coa_id: '', credit_coa_id: '', amount: '', description: '' });
+  const [form, setForm] = useState({ journal_date: hariIniWib(), debit_coa_id: '', credit_coa_id: '', amount: '', description: '' });
 
   const loadData = () => {
     fetch('/api/admin/financial?period=ALL').then(r => r.json()).then(d => {
@@ -3110,7 +3115,7 @@ function GeneralJournalTab() {
       if (d.success) {
         alert('Jurnal umum berhasil disimpan!');
         setShowModal(false);
-        setForm({ journal_date: new Date().toISOString().split('T')[0], debit_coa_id: '', credit_coa_id: '', amount: '', description: '' });
+        setForm({ journal_date: hariIniWib(), debit_coa_id: '', credit_coa_id: '', amount: '', description: '' });
         loadData();
       } else {
         alert(d.message || 'Gagal menyimpan jurnal');
@@ -3209,7 +3214,7 @@ function ExpensesTab() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [coaList, setCoaList] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ expense_date: new Date().toISOString().split('T')[0], coa_account_id: '', amount: '', description: '' });
+  const [form, setForm] = useState({ expense_date: hariIniWib(), coa_account_id: '', amount: '', description: '' });
 
   const loadData = () => {
     fetch('/api/admin/financial?period=ALL').then(r => r.json()).then(d => {
@@ -3235,7 +3240,7 @@ function ExpensesTab() {
       if (d.success) {
         alert('Beban operasional berhasil dicatat!');
         setShowModal(false);
-        setForm({ expense_date: new Date().toISOString().split('T')[0], coa_account_id: '', amount: '', description: '' });
+        setForm({ expense_date: hariIniWib(), coa_account_id: '', amount: '', description: '' });
         loadData();
       } else {
         alert(d.message || 'Gagal mencatat beban');
@@ -3890,7 +3895,7 @@ function LabaRugiTab({ isOwner }: { isOwner: boolean }) {
   // Form input expense modal
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [coaId, setCoaId] = useState('');
-  const [expDate, setExpDate] = useState(new Date().toISOString().slice(0,10));
+  const [expDate, setExpDate] = useState(hariIniWib());
   const [amount, setAmount] = useState('');
   const [desc, setDesc] = useState('');
   const [method, setMethod] = useState('TRANSFER');

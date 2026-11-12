@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
+import { catatAudit } from '@/lib/permissions';
 import { recalcTransaction } from '@/lib/booking';
 import { tulisLedger, akunKasDefault, akunPendapatanDefault } from '@/lib/ledger';
+import { keTanggalWib, tanggalWib } from '@/lib/waktu';
 
 /**
  * Verifikasi pembayaran oleh admin. Endpoint ini WAJIB login (satu-satunya jalur
@@ -84,7 +86,12 @@ export async function POST(req: Request) {
           const akunPendapatan = akunPendapatanDefault();
           if (!akunKas || !akunPendapatan) throw new Error('Akun kas/pendapatan default tidak ditemukan di COA');
 
-          const tanggal = String(payment.created_at || now).slice(0, 10);
+          /*
+           * `payment.created_at` di SQLite memakai CURRENT_TIMESTAMP (UTC).
+           * Memotong 10 karakter begitu saja membuat pembayaran pukul
+           * 00:00–06:59 WIB masuk ke tanggal kemarin. Konversi ke WIB dulu.
+           */
+          const tanggal = keTanggalWib(payment.created_at) || tanggalWib();
           const ket = `Pembayaran ${payment.receipt_number} (${payment.payment_phase || 'DP'})`;
 
           const ledgerId = tulisLedger(
@@ -113,6 +120,32 @@ export async function POST(req: Request) {
       // Hitung ulang dari SEMUA pembayaran APPROVED (bukan dari angka lama).
       return recalcTransaction(payment.transaction_id);
     })();
+
+    /*
+     * S1: JEJAK AUDIT untuk verifikasi/tolak pembayaran.
+     *
+     * Ini jalur paling sensitif — di sinilah uang diakui sebagai pendapatan.
+     * Sebelumnya tidak ada catatan siapa yang menyetujui, sehingga selisih kas
+     * mustahil ditelusuri ke pelakunya.
+     */
+    try {
+      catatAudit({
+        user: auth.user,
+        action: action === 'APPROVE' ? 'VERIFY' : 'REJECT',
+        module: 'payment',
+        recordId: paymentId,
+        before: { status: payment.status, amount: Number(payment.amount) || 0 },
+        after: {
+          status: action === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+          amount: Number(payment.amount) || 0,
+          transaction_id: payment.transaction_id,
+        },
+        notes: notes || (action === 'APPROVE' ? 'Pembayaran disetujui' : 'Pembayaran ditolak'),
+      });
+    } catch (e) {
+      // Audit tidak boleh menggagalkan proses uang, tetapi harus terlihat di log.
+      console.error('[verify] gagal mencatat audit:', (e as Error).message);
+    }
 
     return NextResponse.json({
       success: true,

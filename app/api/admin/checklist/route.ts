@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
-import { requirePermission } from '@/lib/permissions';
+import { requirePermission, catatAudit } from '@/lib/permissions';
 import { catatHppPenyerahan, hapusHppPenyerahan } from '@/lib/persediaan';
 
 initDB();
@@ -125,6 +125,12 @@ export async function POST(request: Request) {
         }
       }
 
+      catatAudit({
+        user: auth.user, action: 'UPDATE', module: 'checklist', recordId: String(checklist_master_id),
+        before: { jamaah_id, status: oldStatus },
+        after: { jamaah_id, status, hpp: hppDicatat },
+      });
+
       return NextResponse.json({
         success: true,
         message: hppDicatat > 0
@@ -146,12 +152,14 @@ export async function POST(request: Request) {
           UPDATE checklist_master SET category = ?, item_code = ?, item_name = ?, is_inventory_linked = ?, inventory_item_id = ?, is_mandatory = ?
           WHERE id = ?
         `).run(category, item_code, item_name, is_inventory_linked ? 1 : 0, inventory_item_id || null, is_mandatory ? 1 : 0, id);
+        catatAudit({ user: auth.user, action: 'UPDATE', module: 'checklist_master', recordId: id, after: { category, item_code, item_name } });
         return NextResponse.json({ success: true, message: 'Master checklist diperbarui' });
       } else {
         db.prepare(`
           INSERT INTO checklist_master (category, item_code, item_name, is_inventory_linked, inventory_item_id, is_mandatory)
           VALUES (?, ?, ?, ?, ?, ?)
         `).run(category, item_code, item_name, is_inventory_linked ? 1 : 0, inventory_item_id || null, is_mandatory ? 1 : 0);
+        catatAudit({ user: auth.user, action: 'CREATE', module: 'checklist_master', recordId: item_code, after: { category, item_code, item_name } });
         return NextResponse.json({ success: true, message: 'Master checklist ditambahkan' });
       }
     }
@@ -160,6 +168,7 @@ export async function POST(request: Request) {
       { const cek = await requirePermission(request, 'checklist.update'); if (!cek.ok) return cek.response; }
       const { id } = body;
       db.prepare('DELETE FROM checklist_master WHERE id = ?').run(id);
+      catatAudit({ user: auth.user, action: 'DELETE', module: 'checklist_master', recordId: id });
       return NextResponse.json({ success: true, message: 'Master checklist dihapus' });
     }
 

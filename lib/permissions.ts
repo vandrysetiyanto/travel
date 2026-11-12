@@ -208,7 +208,19 @@ export function catatAudit(input: {
       input.notes ?? null,
       input.ip ?? null,
     );
-  } catch {
-    /* sengaja diabaikan */
+  } catch (e) {
+    /*
+     * JANGAN menelan error tanpa jejak.
+     *
+     * Dulu blok ini `catch { /* diabaikan *\/ }`, sehingga kegagalan menulis
+     * audit (mis. kolom tidak cocok) tidak pernah terlihat: perubahan uang &
+     * stok berjalan tanpa jejak siapa pelakunya, dan tidak ada satu pun tanda
+     * bahwa audit sedang rusak.
+     *
+     * Audit tetap tidak boleh menggagalkan proses bisnis, jadi alurnya tidak
+     * dihentikan — tetapi kegagalannya dicatat ke log agar bisa diperbaiki.
+     */
+    console.error('[catatAudit] GAGAL mencatat audit:', (e as Error).message,
+      '| module:', input.module, '| action:', input.action);
   }
 }

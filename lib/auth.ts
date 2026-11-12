@@ -100,12 +100,24 @@ export async function createSessionToken(user: SessionUser): Promise<string> {
 
 /** Opsi cookie sesi. Tanpa `secure` supaya tetap jalan di http (dev/lokal);
  *  set COOKIE_SECURE=true kalau sudah di belakang HTTPS. */
+/*
+ * Opsi cookie sesi.
+ *
+ * S3: `secure` DULU hanya aktif bila COOKIE_SECURE=true, dan variabel itu tidak
+ * pernah diset — sehingga cookie sesi dikirim juga lewat koneksi non-TLS dan
+ * bisa disadap. Sekarang `secure` menyala otomatis di produksi, dan hanya
+ * dimatikan bila memang ingin mengembangkan lewat http lokal
+ * (COOKIE_SECURE=false).
+ */
+const produksi = process.env.NODE_ENV === 'production';
+const paksa = process.env.COOKIE_SECURE;
+
 export const sessionCookieOptions = {
   httpOnly: true,
   sameSite: 'lax' as const,
   path: '/',
   maxAge: SESSION_MAX_AGE,
-  secure: process.env.COOKIE_SECURE === 'true',
+  secure: paksa === 'false' ? false : paksa === 'true' ? true : produksi,
 };
 
 type AuthOk = { ok: true; user: SessionUser | null };

@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
-import { requirePermission } from '@/lib/permissions';
+import { requirePermission, catatAudit } from '@/lib/permissions';
 import { catatHppPenyerahan } from '@/lib/persediaan';
+import { validasiNominal } from '@/lib/uang';
 
 initDB();
 
@@ -47,20 +48,34 @@ export async function POST(req: Request) {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(
         code, name, category || 'Perlengkapan', Number(stock_total) || 0, unit || 'Pcs', description || '',
-        Math.max(0, Math.round(Number(unit_cost) || 0)),
+        // Harga satuan divalidasi: negatif/NaN tidak boleh tersimpan.
+        (validasiNominal(unit_cost, 'Harga satuan', { min: 0 }).ok
+          ? (validasiNominal(unit_cost, 'Harga satuan', { min: 0 }) as any).nilai
+          : 0),
       );
+      catatAudit({
+        user: auth.user, action: 'CREATE', module: 'inventory',
+        recordId: String(code),
+        after: { code, name, stock_total: Number(stock_total) || 0, unit_cost: Number(unit_cost) || 0 },
+      });
       return NextResponse.json({ success: true, message: 'Barang berhasil ditambahkan' });
     }
 
     if (action === 'UPDATE_STOCK') {
       { const cek = await requirePermission(req, 'inventory.update'); if (!cek.ok) return cek.response; }
       const { item_id, stock_total, unit_cost } = body;
+      const lama = db.prepare('SELECT stock_total, unit_cost FROM inventory_items WHERE id = ?').get(item_id) as any;
       if (unit_cost !== undefined && unit_cost !== null && unit_cost !== '') {
         db.prepare('UPDATE inventory_items SET stock_total = ?, unit_cost = ? WHERE id = ?')
           .run(Number(stock_total), Math.max(0, Math.round(Number(unit_cost) || 0)), item_id);
       } else {
         db.prepare('UPDATE inventory_items SET stock_total = ? WHERE id = ?').run(Number(stock_total), item_id);
       }
+      catatAudit({
+        user: auth.user, action: 'UPDATE', module: 'inventory', recordId: String(item_id),
+        before: lama ? { stock_total: lama.stock_total, unit_cost: lama.unit_cost } : null,
+        after: { stock_total: Number(stock_total), unit_cost: Number(unit_cost) || (lama?.unit_cost ?? 0) },
+      });
       return NextResponse.json({ success: true, message: 'Stok berhasil diperbarui' });
     }
 
@@ -100,6 +115,12 @@ export async function POST(req: Request) {
         catatanHpp = hasil.alasan || '';
       });
       proses();
+
+      catatAudit({
+        user: auth.user, action: 'CREATE', module: 'inventory_handover',
+        recordId: String(transaction_id),
+        after: { item_id, qty: countQty, hpp, notes: notes || '' },
+      });
 
       return NextResponse.json({
         success: true,

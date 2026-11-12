@@ -89,7 +89,17 @@ export function cekBentrokJadwal(
 
   const tanda = jamaahIds.map(() => '?').join(',');
   const syaratKecuali = kecualikanTransactionId ? ' AND t.id <> ?' : '';
-  const params: any[] = [...jamaahIds, mulai, selesai];
+  /*
+   * Urutan parameter HARUS (selesai, mulai).
+   *
+   * Rumus irisan dua rentang: A.mulai <= B.selesai DAN B.mulai <= A.selesai.
+   * Sebelumnya parameternya terkirim (mulai, selesai) sementara SQL memakai
+   * urutan (A.mulai <= ?, ? <= A.selesai) — sehingga yang teruji menjadi
+   * "jadwal lama MEMUAT jadwal baru". Akibatnya bentrok hanya terdeteksi bila
+   * jadwal baru sepenuhnya di dalam jadwal lama; jadwal yang bergeser sedikit
+   * (kasus paling umum: berangkat lagi sebelum pulang) LOLOS tanpa peringatan.
+   */
+  const params: any[] = [...jamaahIds, selesai, mulai];
   if (kecualikanTransactionId) params.push(kecualikanTransactionId);
 
   return db

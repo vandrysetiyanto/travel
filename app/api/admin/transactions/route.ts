@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
-import { requirePermission } from '@/lib/permissions';
+import { requirePermission, catatAudit } from '@/lib/permissions';
 import { tulisLedger, akunKasDefault, akunPendapatanDefault } from '@/lib/ledger';
+import { tanggalWib } from '@/lib/waktu';
+import { cekBentrokJadwal, pesanBentrok, tautkanJamaah } from '@/lib/booking-jamaah';
 
 initDB();
 
@@ -90,8 +92,43 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, message: 'Batch tidak ditemukan' }, { status: 400 });
       }
 
+      /*
+       * Aturan bisnis pemilik: jamaah BOLEH umroh berulang, tetapi jadwalnya
+       * TIDAK BOLEH BERIRISAN (harus selesai dulu baru boleh mendaftar lagi).
+       *
+       * Pemeriksaan ini hanya ada di /api/register (pendaftaran publik), sehingga
+       * admin bisa mendaftarkan jamaah yang sedang berangkat lewat dashboard —
+       * aturannya jadi tidak berlaku untuk jalur yang paling sering dipakai staf.
+       */
+      const bentrok = cekBentrokJadwal(db, [Number(jamaah_id)], {
+        departure_date: batch.departure_date,
+        return_date: batch.return_date,
+        id: Number(batch_id),
+      });
+      if (bentrok.length) {
+        return NextResponse.json({
+          success: false,
+          message: pesanBentrok(bentrok),
+          bentrok,
+        }, { status: 409 });
+      }
+
       const totalAmount = batch.price;
       const initialPaid = Number(initial_payment) || 0;
+
+      /*
+       * Pembayaran awal juga divalidasi: negatif/melebihi tagihan tidak boleh
+       * membuat paid_amount melewati total_amount.
+       */
+      if (initialPaid < 0) {
+        return NextResponse.json({ success: false, message: 'Pembayaran awal tidak boleh negatif.' }, { status: 400 });
+      }
+      if (initialPaid > totalAmount) {
+        return NextResponse.json({
+          success: false,
+          message: `Pembayaran awal (Rp ${initialPaid.toLocaleString('id-ID')}) melebihi harga paket (Rp ${Number(totalAmount).toLocaleString('id-ID')}).`,
+        }, { status: 400 });
+      }
       const remaining = Math.max(0, totalAmount - initialPaid);
       let status = 'PENDING';
       if (initialPaid >= totalAmount) {
@@ -109,6 +146,19 @@ export async function POST(request: Request) {
 
       const txId = Number(insTx.lastInsertRowid);
 
+      /*
+       * WAJIB: tautkan booking ke jamaah lewat tabel relasi `booking_jamaah`.
+       *
+       * Sebelumnya CREATE_BOOKING hanya menulis `transactions.jamaah_id` tanpa
+       * membuat baris di `booking_jamaah`. Akibatnya:
+       *   - `cekBentrokJadwal()` (yang membaca `booking_jamaah`) tidak pernah
+       *     menemukan bentrok -> aturan "tidak boleh beririsan" tidak berlaku
+       *     untuk booking yang dibuat admin
+       *   - laporan per paket & manifest kehilangan relasi ber-id
+       * Dilekatkan dalam transaksi DB yang sama dengan pembuatan booking.
+       */
+      tautkanJamaah(db, txId, Number(jamaah_id), 'LEADER', 1);
+
       if (initialPaid > 0) {
         const receiptNo = 'KW-' + Math.floor(100000 + Math.random() * 900000);
         db.prepare(`
@@ -116,6 +166,11 @@ export async function POST(request: Request) {
           VALUES (?, ?, ?, ?, ?, ?)
         `).run(txId, receiptNo, initialPaid, payment_type || 'CASH', initialPaid >= totalAmount ? 'PELUNASAN' : 'DP', 'Pembayaran Awal');
       }
+
+      catatAudit({
+        user: auth.user, action: 'CREATE', module: 'transaction', recordId: txId,
+        after: { booking_code: bookingCode, jamaah_id, batch_id, total_amount: totalAmount, paid_amount: initialPaid, status },
+      });
 
       return NextResponse.json({ success: true, message: 'Booking pendaftaran berhasil dibuat', booking_code: bookingCode, transaction_id: txId });
     }
@@ -190,7 +245,7 @@ export async function POST(request: Request) {
             entryType: 'DEBIT',
             amount: payAmount,
             description: `Pembayaran jamaah - ${receiptNo}`,
-            entryDate: new Date().toISOString().split('T')[0],
+            entryDate: tanggalWib(),
             reference: receiptNo,
           },
         );
@@ -201,7 +256,7 @@ export async function POST(request: Request) {
             entryType: 'CREDIT',
             amount: payAmount,
             description: `Pendapatan paket - ${receiptNo}`,
-            entryDate: new Date().toISOString().split('T')[0],
+            entryDate: tanggalWib(),
             reference: receiptNo,
           },
         );
@@ -211,6 +266,11 @@ export async function POST(request: Request) {
       });
 
       simpan();
+
+      catatAudit({
+        user: auth.user, action: 'CREATE', module: 'payment', recordId: receiptNo,
+        after: { transaction_id, amount: payAmount, receipt_number: receiptNo, status: 'APPROVED' },
+      });
 
       return NextResponse.json({ success: true, message: 'Pembayaran berhasil dicatat', receipt_number: receiptNo });
     }
