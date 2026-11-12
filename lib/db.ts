@@ -238,7 +238,7 @@ export function initDB() {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { sinkronRBAC } = require('@/lib/rbac-sync');
-    sinkronRBAC();
+    sinkronRBAC(db);
   } catch (e) {
     console.error('[initDB] sinkronRBAC gagal:', (e as Error).message);
   }
@@ -253,7 +253,7 @@ export function initDB() {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { pastikanBookingJamaah } = require('@/lib/booking-jamaah');
-    pastikanBookingJamaah();
+    pastikanBookingJamaah(db);
   } catch (e) {
     console.error('[initDB] pastikanBookingJamaah gagal:', (e as Error).message);
   }
@@ -346,13 +346,22 @@ export function initDB() {
     `).run();
   }
 
-  // Admin & Owner user seed
-  const checkOwner = db.prepare(`SELECT COUNT(*) as count FROM users WHERE role = 'OWNER'`).get() as { count: number };
+  // Admin & Owner user seed.
+  //
+  // Dicek berdasarkan EMAIL, bukan jumlah user ber-role OWNER. Sebelumnya cek
+  // memakai role='OWNER': kalau tidak ada user ber-role OWNER tetapi email
+  // owner@travel.com sudah dipakai, INSERT melanggar UNIQUE(users.email) dan
+  // MEMBLOKIR seluruh initDB() — termasuk sinkronRBAC() dan migrasi berikutnya.
+  const checkOwner = db.prepare(`SELECT COUNT(*) as count FROM users WHERE email = 'owner@travel.com'`).get() as { count: number };
   if (checkOwner.count === 0) {
-    db.prepare(`
-      INSERT INTO users (name, email, password, role) 
-      VALUES (?, ?, ?, ?)
-    `).run('Owner / Direktur Travel', 'owner@travel.com', 'owner123', 'OWNER');
+    try {
+      db.prepare(`
+        INSERT INTO users (name, email, password, role)
+        VALUES (?, ?, ?, ?)
+      `).run('Owner / Direktur Travel', 'owner@travel.com', 'owner123', 'OWNER');
+    } catch (e) {
+      console.error('[initDB] seed owner dilewati:', (e as Error).message);
+    }
   }
 
   const checkAdmin = db.prepare(`SELECT COUNT(*) as count FROM users WHERE email = 'admin@travel.com'`).get() as { count: number };
@@ -363,6 +372,53 @@ export function initDB() {
     `).run('Staff Admin Operasional', 'admin@travel.com', 'admin123', 'ADMIN');
   } else {
     db.prepare(`UPDATE users SET role = 'ADMIN' WHERE email = 'admin@travel.com' AND role = 'SUPERADMIN'`).run();
+  }
+
+  /*
+   * Perbaikan mapping checklist logistik yang sudah terlanjur salah pada
+   * database berjalan (dijalankan sekali, aman diulang). Dipetakan ulang
+   * berdasarkan KODE barang supaya tidak bergantung pada id numerik.
+   */
+  try {
+    const petaBenar: Record<string, string> = {
+      LOG_SERAGAM: 'BTK-01',
+      LOG_KOPER: 'KPR-01',
+      LOG_BUKU: 'BUK-01',
+      LOG_IHRAM: 'IHR-01',
+      LOG_MUKENA: 'MKN-01',
+      LOG_TAS: 'TAS-01',
+    };
+    const ambilId = db.prepare('SELECT id FROM inventory_items WHERE code = ?');
+    const ambilCm = db.prepare('SELECT id, inventory_item_id FROM checklist_master WHERE item_code = ?');
+    const perbarui = db.prepare('UPDATE checklist_master SET inventory_item_id = ?, is_inventory_linked = 1 WHERE id = ?');
+    const rapikan = db.transaction(() => {
+      for (const [kodeCm, kodeBarang] of Object.entries(petaBenar)) {
+        const barang = ambilId.get(kodeBarang) as { id: number } | undefined;
+        const cm = ambilCm.get(kodeCm) as { id: number; inventory_item_id: number | null } | undefined;
+        if (!barang || !cm) continue;
+        if (cm.inventory_item_id !== barang.id) perbarui.run(barang.id, cm.id);
+      }
+      // Barang yang belum punya baris checklist-nya tetap ditambahkan.
+      const ada = db.prepare('SELECT 1 FROM checklist_master WHERE item_code = ?');
+      if (!ada.get('LOG_IHRAM')) {
+        const b = ambilId.get('IHR-01') as { id: number } | undefined;
+        if (b) db.prepare(`INSERT INTO checklist_master (category, item_code, item_name, is_inventory_linked, inventory_item_id, is_mandatory)
+                           VALUES ('Logistik','LOG_IHRAM','Kain Ihram',1,?,1)`).run(b.id);
+      }
+      if (!ada.get('LOG_MUKENA')) {
+        const b = ambilId.get('MKN-01') as { id: number } | undefined;
+        if (b) db.prepare(`INSERT INTO checklist_master (category, item_code, item_name, is_inventory_linked, inventory_item_id, is_mandatory)
+                           VALUES ('Logistik','LOG_MUKENA','Mukena',1,?,0)`).run(b.id);
+      }
+      if (!ada.get('LOG_TAS')) {
+        const b = ambilId.get('TAS-01') as { id: number } | undefined;
+        if (b) db.prepare(`INSERT INTO checklist_master (category, item_code, item_name, is_inventory_linked, inventory_item_id, is_mandatory)
+                           VALUES ('Logistik','LOG_TAS','Tas Paspor & Selempang',1,?,1)`).run(b.id);
+      }
+    });
+    rapikan();
+  } catch (e) {
+    console.error('[initDB] perbaikan mapping checklist gagal:', (e as Error).message);
   }
 
   // Seed default packages if empty
@@ -470,9 +526,23 @@ initDB();
     cm.run('Finansial', 'FIN_DP', 'Pembayaran Uang Muka (DP)', 0, null, 1);
     cm.run('Finansial', 'FIN_LUNAS', 'Pelunasan Biaya Paket', 0, null, 1);
     cm.run('Finansial', 'FIN_KONTRAK', 'Surat Perjanjian Umroh (E-Sign)', 0, null, 1);
-    cm.run('Logistik', 'LOG_SERAGAM', 'Seragam Batik Resmi Travel', 1, 1, 1);
-    cm.run('Logistik', 'LOG_KOPER', 'Koper Utama & Kabin Set', 1, 2, 1);
-    cm.run('Logistik', 'LOG_BUKU', 'Buku Panduan Doa & Zikir', 1, 3, 1);
+    /*
+     * Ditautkan lewat KODE barang, bukan id numerik.
+     *
+     * Sebelumnya memakai id 1/2/3 secara hardcode, sehingga ketika urutan
+     * inventory_items berubah (id 1 = Koper, 2 = Ihram, 3 = Mukena) tautannya
+     * jadi salah: "Seragam Batik" menunjuk Koper, "Koper" menunjuk Kain Ihram,
+     * "Buku Panduan" menunjuk Mukena. Stok yang dipotong saat barang diserahkan
+     * ke jamaah pun salah barang.
+     */
+    const idBarang = (kode: string) =>
+      (db.prepare('SELECT id FROM inventory_items WHERE code = ?').get(kode) as { id: number } | undefined)?.id ?? null;
+    cm.run('Logistik', 'LOG_SERAGAM', 'Seragam Batik Resmi Travel', 1, idBarang('BTK-01'), 1);
+    cm.run('Logistik', 'LOG_KOPER', 'Koper Utama & Kabin Set', 1, idBarang('KPR-01'), 1);
+    cm.run('Logistik', 'LOG_BUKU', 'Buku Panduan Doa & Zikir', 1, idBarang('BUK-01'), 1);
+    cm.run('Logistik', 'LOG_IHRAM', 'Kain Ihram', 1, idBarang('IHR-01'), 1);
+    cm.run('Logistik', 'LOG_MUKENA', 'Mukena', 1, idBarang('MKN-01'), 0);
+    cm.run('Logistik', 'LOG_TAS', 'Tas Paspor & Selempang', 1, idBarang('TAS-01'), 1);
     cm.run('Logistik', 'LOG_SYAL', 'Syal / Atribut Identitas', 0, null, 0);
     cm.run('Manasik', 'MAN_HADIR', 'Kehadiran Manasik Umroh', 0, null, 1);
   }

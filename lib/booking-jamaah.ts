@@ -15,10 +15,10 @@
  * sebelum bisa terdaftar di perjalanan berikutnya. Aturan itu diterapkan di
  * `cekBentrokJadwal()`, bukan di skema, karena rentang tanggal ada di `batches`.
  */
-import db from '@/lib/db';
+import type Database from 'better-sqlite3';
 
 /** Buat tabel bila belum ada (dipanggil dari initDB). */
-export function pastikanBookingJamaah(): void {
+export function pastikanBookingJamaah(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS booking_jamaah (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,7 +37,7 @@ export function pastikanBookingJamaah(): void {
 }
 
 /** Semua jamaah dalam satu booking (dari tabel penghubung, fallback ke leader). */
-export function jamaahBooking(transactionId: number): { jamaah_id: number; peran: string; urutan: number }[] {
+export function jamaahBooking(db: Database.Database, transactionId: number): { jamaah_id: number; peran: string; urutan: number }[] {
   const rows = db
     .prepare('SELECT jamaah_id, peran, urutan FROM booking_jamaah WHERE transaction_id = ? ORDER BY urutan ASC, id ASC')
     .all(transactionId) as { jamaah_id: number; peran: string; urutan: number }[];
@@ -49,7 +49,7 @@ export function jamaahBooking(transactionId: number): { jamaah_id: number; peran
 }
 
 /** Tautkan satu jamaah ke satu booking (idempoten). */
-export function tautkanJamaah(transactionId: number, jamaahId: number, peran = 'ANGGOTA', urutan = 1): void {
+export function tautkanJamaah(db: Database.Database, transactionId: number, jamaahId: number, peran = 'ANGGOTA', urutan = 1): void {
   db.prepare(
     `INSERT INTO booking_jamaah (transaction_id, jamaah_id, peran, urutan) VALUES (?, ?, ?, ?)
      ON CONFLICT(transaction_id, jamaah_id) DO UPDATE SET peran = excluded.peran, urutan = excluded.urutan`,
@@ -77,6 +77,7 @@ export type BentrokJadwal = {
  * booking itu tidak dianggap bentrok dengan dirinya sendiri.
  */
 export function cekBentrokJadwal(
+  db: Database.Database,
   jamaahIds: number[],
   batchTujuan: { departure_date: string; return_date: string; id?: number },
   kecualikanTransactionId?: number,

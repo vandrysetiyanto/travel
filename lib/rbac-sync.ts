@@ -4,16 +4,31 @@
  * Yang dilakukan:
  *   1. Membuat tabel roles / permissions / role_permissions / audit_log
  *   2. Mengisi daftar izin & role bawaan
- *   3. Menormalkan users.role yang tidak dikenal menjadi VIEWER
+ *   3. Memeriksa users.role yang tidak dikenal — HANYA dilaporkan, TIDAK diubah
  *   4. Mencatat profil lama (jika ada) ke audit_log sekali
  *
  * Tidak pernah menghapus izin dari role yang sudah ada secara manual — hanya
  * menambah yang belum ada, supaya penyesuaian manual tidak hilang saat restart.
+ *
+ * PENTING: role yang tidak dikenal TIDAK lagi ditimpa menjadi VIEWER.
+ * Menimpa diam-diam bertentangan dengan default-deny di permissionsOf():
+ * salah ketik nama role justru memberi 7 izin baca (jamaah/booking/pembayaran)
+ * tanpa pernah muncul sebagai masalah. Sekarang role seperti itu dibiarkan
+ * (0 izin) dan ditampilkan di Master Role untuk diperbaiki secara eksplisit
+ * lewat /api/admin/roles/orphan.
  */
-import db from '@/lib/db';
+import type Database from 'better-sqlite3';
 import { PERMISSIONS, ROLE_BAWAAN, SEMUA_IZIN } from '@/lib/permissions';
 
-export function sinkronRBAC(): { izin: number; role: number; dinormalkan: number } {
+/**
+ * Menerima koneksi sebagai parameter, BUKAN mengimpor '@/lib/db'.
+ *
+ * Sebelumnya modul ini mengimpor lib/db sementara lib/db memanggilnya dari
+ * dalam initDB() -> circular import. Di build produksi Next itu berakibat
+ * "Cannot access 'c' before initialization", sehingga sinkronRBAC() dan seluruh
+ * migrasi sesudahnya gagal diam-diam (tertelan try/catch di db.ts).
+ */
+export function sinkronRBAC(db: Database.Database): { izin: number; role: number; dinormalkan: number; menggantung: number } {
   db.exec(`
     CREATE TABLE IF NOT EXISTS roles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,25 +107,42 @@ export function sinkronRBAC(): { izin: number; role: number; dinormalkan: number
   });
   tambah();
 
-  // Role di users yang tidak dikenal -> VIEWER (paling sedikit izin, bukan admin).
+  /*
+   * Role di users yang tidak dikenal: JANGAN ditimpa.
+   *
+   * Hanya penulisan ULANG yang aman yang dilakukan, yaitu merapikan spasi/besar
+   * kecil bila role-nya memang terdaftar (mis. 'owner' -> 'OWNER'). Role asing
+   * dibiarkan apa adanya sehingga izinnya kosong (default deny) dan muncul di
+   * Master Role sebagai "role menggantung" untuk diperbaiki oleh pemilik.
+   */
   const dikenal = new Set(
     (db.prepare('SELECT code FROM roles').all() as { code: string }[]).map((r) => r.code),
   );
   const users = db.prepare('SELECT id, email, role FROM users').all() as { id: number; email: string; role: string }[];
   const setRole = db.prepare('UPDATE users SET role = ? WHERE id = ?');
   let dinormalkan = 0;
+  let menggantung = 0;
   const norma = db.transaction(() => {
     for (const u of users) {
       const kode = String(u.role || '').trim().toUpperCase();
       if (!dikenal.has(kode)) {
-        setRole.run('VIEWER', u.id);
+        menggantung++;      // dilaporkan saja — TIDAK diubah menjadi VIEWER
+        continue;
+      }
+      if (kode !== u.role) {
+        setRole.run(kode, u.id);   // hanya merapikan format, bukan mengganti role
         dinormalkan++;
-      } else if (kode !== u.role) {
-        setRole.run(kode, u.id);
       }
     }
   });
   norma();
+
+  if (menggantung > 0) {
+    console.warn(
+      `[sinkronRBAC] ${menggantung} pengguna memakai role yang tidak terdaftar. ` +
+      'Role dibiarkan (0 izin) — perbaiki lewat Master Role.',
+    );
+  }
 
   // Pastikan OWNER selalu memegang seluruh izin yang terdaftar (izin baru ikut masuk).
   const ridOwner = idRole('OWNER');
@@ -127,5 +159,5 @@ export function sinkronRBAC(): { izin: number; role: number; dinormalkan: number
     }
   }
 
-  return { izin: jmlIzin, role: ROLE_BAWAAN.length, dinormalkan };
+  return { izin: jmlIzin, role: ROLE_BAWAAN.length, dinormalkan, menggantung };
 }

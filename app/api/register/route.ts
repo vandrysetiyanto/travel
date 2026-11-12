@@ -63,7 +63,7 @@ export async function POST(req: Request) {
       .all(...nikDaftar) as { id: number; nik: string }[];
     if (jamaahLama.length) {
       const { cekBentrokJadwal, pesanBentrok } = await import('@/lib/booking-jamaah');
-      const bentrok = cekBentrokJadwal(jamaahLama.map((j) => j.id), {
+      const bentrok = cekBentrokJadwal(db, jamaahLama.map((j) => j.id), {
         departure_date: batch.departure_date,
         return_date: batch.return_date,
         id: batch.id,
