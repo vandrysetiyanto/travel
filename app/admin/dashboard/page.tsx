@@ -6,6 +6,7 @@ import { MasterJamaah, MasterPaket, MasterBatches, MasterInventaris } from '@/co
 import { LaporanTab, LedgerTab, StockLedgerTab, GeneralJournalTab } from '@/components/dashboard/keuangan';
 import { ChecklistTab, ManifestTab, RegistrationsTab } from '@/components/dashboard/operasional';
 import { RiwayatJamaahTab } from '@/components/dashboard/riwayat-jamaah';
+import { LabaRugiKloterTab } from '@/components/dashboard/laba-rugi-kloter';
 
 import { EmptyState, StatusBadge, DocBadge, FInput, ToastContainer } from '@/components/dashboard/ui-dasar';
 
@@ -20,7 +21,7 @@ import { CheckSquare, FileText, Calculator, Wallet, LayoutDashboard, Users, Pack
 
 
 
-type Tab = 'dashboard' | 'riwayat-jamaah' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings';
+type Tab = 'dashboard' | 'riwayat-jamaah' | 'laba-rugi-kloter' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings';
 type MasterSub = 'jamaah' | 'paket' | 'inventaris';
 
 /* ===================== DASHBOARD TAB ===================== */
@@ -2051,6 +2052,7 @@ export default function AdminDashboard() {
       items: [
         { id: 'laporan', perm: 'report.finance', icon: <TrendingUp className="w-4 h-4" />, label: 'Laporan Keuangan' },
         { id: 'laba-rugi', perm: 'report.finance', icon: <FileText className="w-4 h-4" />, label: 'Laporan Laba Rugi' },
+        { id: 'laba-rugi-kloter' as Tab, perm: 'report.finance', icon: <TrendingUp className="w-4 h-4" />, label: 'Laba Rugi per Kloter' },
         { id: 'neraca', perm: 'report.finance', icon: <Calculator className="w-4 h-4" />, label: 'Laporan Neraca' },
         { id: 'arus-kas', perm: 'report.finance', icon: <Wallet className="w-4 h-4" />, label: 'Laporan Arus Kas' },
         { id: 'ledger' as Tab, perm: 'journal.read', icon: <FileSpreadsheet className="w-4 h-4" />, label: 'Jurnal Buku Besar' },
@@ -2310,6 +2312,7 @@ export default function AdminDashboard() {
           {activeTab === 'laporan' && <LaporanTab isOwner={has('report.finance')} />}
           {activeTab === 'master-coa' && <MasterCOATab />}
           {activeTab === 'laba-rugi' && <LabaRugiTab isOwner={has('report.finance')} />}
+          {activeTab === 'laba-rugi-kloter' && <LabaRugiKloterTab />}
           {activeTab === 'neraca' && <NeracaTab />}
           {activeTab === 'arus-kas' && <ArusKasTab />}
             {activeTab === 'ledger' && <LedgerTab />}
