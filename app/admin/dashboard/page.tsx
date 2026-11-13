@@ -5,6 +5,7 @@ import { fmt, fmtRp, hariIniWib } from '@/components/dashboard/format';
 import { MasterJamaah, MasterPaket, MasterBatches, MasterInventaris } from '@/components/dashboard/master';
 import { LaporanTab, LedgerTab, StockLedgerTab, GeneralJournalTab } from '@/components/dashboard/keuangan';
 import { ChecklistTab, ManifestTab, RegistrationsTab } from '@/components/dashboard/operasional';
+import { RiwayatJamaahTab } from '@/components/dashboard/riwayat-jamaah';
 
 import { EmptyState, StatusBadge, DocBadge, FInput, ToastContainer } from '@/components/dashboard/ui-dasar';
 
@@ -19,7 +20,7 @@ import { CheckSquare, FileText, Calculator, Wallet, LayoutDashboard, Users, Pack
 
 
 
-type Tab = 'dashboard' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings';
+type Tab = 'dashboard' | 'riwayat-jamaah' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings';
 type MasterSub = 'jamaah' | 'paket' | 'inventaris';
 
 /* ===================== DASHBOARD TAB ===================== */
@@ -532,6 +533,7 @@ function TransaksiTab() {
               <th className="p-3">Kode</th>
               <th className="p-3">Jamaah</th>
               <th className="p-3">Paket</th>
+              <th className="p-3">Batch / Jadwal</th>
               <th className="p-3 text-right">Total</th>
               <th className="p-3 text-right">Dibayar</th>
               <th className="p-3 text-right">Sisa</th>
@@ -545,6 +547,10 @@ function TransaksiTab() {
                 <td className="p-3 font-mono text-slate-500 font-bold">{t.booking_code}</td>
                 <td className="p-3 font-bold text-slate-900">{t.full_name}</td>
                 <td className="p-3 text-slate-600">{t.package_name}</td>
+                <td className="p-3 text-slate-600">
+                  <span className="block text-[11px] font-bold text-slate-800">{t.batch_name || '-'}</span>
+                  <span className="block text-[10px] text-slate-400 font-mono">{t.departure_date || ''}</span>
+                </td>
                 <td className="p-3 text-right font-mono font-bold text-slate-900">{fmtRp(t.total_amount)}</td>
                 <td className="p-3 text-right font-mono font-bold text-emerald-600">{fmtRp(t.paid_amount)}</td>
                 <td className="p-3 text-right font-mono font-bold text-rose-600">{fmtRp(t.remaining_amount)}</td>
@@ -554,7 +560,7 @@ function TransaksiTab() {
                 </td>
               </tr>
             ))}
-            {txList.length===0 && <tr><td colSpan={8} className="text-center py-8 text-slate-400">Belum ada transaksi pendaftaran.</td></tr>}
+            {txList.length===0 && <tr><td colSpan={9} className="text-center py-8 text-slate-400">Belum ada transaksi pendaftaran.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -2016,6 +2022,7 @@ export default function AdminDashboard() {
       groupName: 'Master Data',
       items: [
         { id: 'jamaah', perm: 'jamaah.read', icon: <Users className="w-4 h-4" />, label: 'Data Jamaah' },
+        { id: 'riwayat-jamaah', perm: 'jamaah.read', icon: <History className="w-4 h-4" />, label: 'Riwayat Jamaah' },
         { id: 'paket', perm: 'paket.read', icon: <Package className="w-4 h-4" />, label: 'Paket Perjalanan' },
         { id: 'batches', perm: 'paket.read', icon: <Plane className="w-4 h-4" />, label: 'Jadwal & Batch' },
         { id: 'inventory', perm: 'inventory.read', icon: <Boxes className="w-4 h-4" />, label: 'Inventaris & Stok' },
@@ -2287,6 +2294,7 @@ export default function AdminDashboard() {
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           {activeTab === 'dashboard' && <DashboardTab isOwner={has('report.finance')} />}
           {activeTab === 'jamaah' && <MasterJamaah />}
+          {activeTab === 'riwayat-jamaah' && <RiwayatJamaahTab />}
         {activeTab === 'checklist' && <ChecklistTab />}
           {activeTab === 'paket' && <MasterPaket />}
           {activeTab === 'batches' && <MasterBatches />}
