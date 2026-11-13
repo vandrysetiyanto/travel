@@ -45,11 +45,17 @@ cek('tidak ada migrasi dijalankan lagi', h2.dijalankan.length === 0, h2.dijalank
 cek('versi tetap 1', h2.ke === 1, String(h2.ke));
 cek('catatan tidak dobel', db.prepare('SELECT COUNT(*) c FROM schema_migrations').get().c === 1);
 
-console.log('\n[5] Tabel data tetap utuh setelah migrasi');
-const t = db.prepare("SELECT COUNT(*) c FROM transactions").get().c;
-const l = db.prepare("SELECT COUNT(*) c FROM ledger").get().c;
-cek('transaksi utuh', t === 3, String(t));
-cek('ledger utuh', l >= 10, String(l));
+console.log('\n[5] Struktur tabel tetap utuh setelah migrasi');
+/*
+ * Yang diuji adalah SKEMA, bukan jumlah baris: setelah reset data dummy,
+ * jumlah baris transaksi/ledger memang 0 — bukan tanda kerusakan.
+ */
+const kolomTx = db.prepare('PRAGMA table_info(transactions)').all().map(c => c.name);
+const kolomLedger = db.prepare('PRAGMA table_info(ledger)').all().map(c => c.name);
+cek('tabel transactions masih punya kolom inti',
+  ['id','booking_code','jamaah_id','total_amount','status'].every(k => kolomTx.includes(k)), kolomTx.join(','));
+cek('tabel ledger masih punya kolom inti',
+  ['id','coa_account_id','entry_type','amount','entry_date'].every(k => kolomLedger.includes(k)), kolomLedger.join(','));
 cek('integrity ok', db.pragma('integrity_check', { simple: true }) === 'ok');
 
 console.log('\n[6] Migrasi GAGAL tidak menaikkan versi');

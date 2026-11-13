@@ -57,10 +57,26 @@ cek('UPDATE_STOCK bisa mengubah unit_cost', setelahUpdate.unit_cost === 150000, 
 
 console.log('\n[3] Penyerahan barang -> HPP terbentuk');
 // butuh transaksi; pakai yang ada atau buat
+/*
+ * Uji ini tidak boleh bergantung pada data contoh: setelah reset data dummy,
+ * tabel transactions kosong. Buat sendiri jamaah + batch + transaksi uji,
+ * memakai skema yang BENAR (transactions tidak punya kolom package_id).
+ */
 let tx = db.prepare('SELECT id FROM transactions ORDER BY id LIMIT 1').get();
+let jamaahUji = null;
 if (!tx) {
-  const ins = db.prepare(`INSERT INTO transactions (booking_code, package_id, jamaah_id, total_price, paid_amount, status)
-                          VALUES ('UJI-HPP-1', 1, 1, 1000000, 0, 'PENDING')`).run();
+  jamaahUji = db.prepare('INSERT INTO master_jamaah (nik, full_name, phone, address, gender) VALUES (?,?,?,?,?)')
+    .run('HPP' + String(Date.now()).slice(-13), 'Uji HPP', '0800', '-', 'L');
+  let batch = db.prepare('SELECT id FROM batches ORDER BY id LIMIT 1').get();
+  if (!batch) {
+    const pk = db.prepare('SELECT id FROM packages ORDER BY id LIMIT 1').get();
+    const b = db.prepare(`INSERT INTO batches (batch_name, package_id, departure_date, return_date, quota, status)
+                          VALUES (?,?,?,?,50,'OPEN')`).run('UJI-HPP', pk.id, '2027-09-01', '2027-09-10');
+    batch = { id: Number(b.lastInsertRowid) };
+  }
+  const ins = db.prepare(`INSERT INTO transactions (booking_code, jamaah_id, batch_id, total_amount, paid_amount, remaining_amount, status)
+                          VALUES (?,?,?,?,0,?,'PENDING')`)
+    .run('UJI-HPP-' + Date.now().toString().slice(-6), jamaahUji.lastInsertRowid, batch.id, 1000000, 1000000);
   tx = { id: Number(ins.lastInsertRowid) };
 }
 const stokAwal = db.prepare('SELECT stock_total FROM inventory_items WHERE id=?').get(barangId).stock_total;
