@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { galatServer } from '@/lib/galat';
 import db from '@/lib/db';
 
 // WAJIB: cegah prerender statis (kalau dibekukan, paket/batch baru tidak muncul
@@ -23,6 +24,6 @@ export async function GET() {
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
     );
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'master/packages' });
   }
 }

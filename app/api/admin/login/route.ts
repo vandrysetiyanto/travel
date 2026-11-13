@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { galatServer } from '@/lib/galat';
 import bcrypt from 'bcryptjs';
 import db, { initDB } from '@/lib/db';
 import { createSessionToken, sessionCookieOptions, SESSION_COOKIE, SESSION_MAX_AGE } from '@/lib/auth';
@@ -95,6 +96,6 @@ export async function POST(req: Request) {
     res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions);
     return res;
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'admin/login' });
   }
 }

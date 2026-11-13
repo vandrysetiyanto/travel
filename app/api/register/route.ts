@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { galatServer } from '@/lib/galat';
 import db, { initDB } from '@/lib/db';
 import { generateBookingCode } from '@/lib/utils';
 
@@ -179,6 +180,6 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error('Registration Error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'register' });
   }
 }

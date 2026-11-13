@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { galatServer } from '@/lib/galat';
 import db from '@/lib/db';
 import { requirePermission, catatAudit } from '@/lib/permissions';
 
@@ -104,6 +105,6 @@ export async function POST(req: Request) {
       diperbaiki: target.map((u) => ({ id: u.id, email: u.email, dari: u.role, ke: roleBaru })),
     });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'admin/roles/orphan' });
   }
 }

@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
+import { galatServer } from '@/lib/galat';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { requirePermission, catatAudit } from '@/lib/permissions';
 import { tulisLedger, akunKasDefault, akunPendapatanDefault } from '@/lib/ledger';
+import { hapusHppPenyerahan } from '@/lib/persediaan';
 import { tanggalWib } from '@/lib/waktu';
 import { cekBentrokJadwal, pesanBentrok, tautkanJamaah } from '@/lib/booking-jamaah';
+import { statusSah, bolehTransisi, LABEL_STATUS } from '@/lib/status-booking';
 
 initDB();
 
@@ -67,7 +70,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ success: true, transactions });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'admin/transactions' });
   }
 }
 
@@ -184,6 +187,19 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, message: 'Transaksi tidak ditemukan' }, { status: 404 });
       }
 
+      /*
+       * Booking yang sudah DIBATALKAN tidak boleh menerima pembayaran baru.
+       * Tanpa gerbang ini, kas bisa bertambah untuk booking yang jurnalnya sudah
+       * dibalik — neraca tetap seimbang tetapi uangnya tidak punya dasar.
+       */
+      const statusTx = String(tx.status || '').toUpperCase();
+      if (statusTx === 'CANCELLED') {
+        return NextResponse.json({
+          success: false,
+          message: `Booking ${tx.booking_code} sudah dibatalkan. Pulihkan statusnya lebih dulu bila ingin menerima pembayaran.`,
+        }, { status: 409 });
+      }
+
       const payAmount = Number(amount);
       if (payAmount <= 0) {
         return NextResponse.json({ success: false, message: 'Nominal pembayaran harus lebih dari 0' }, { status: 400 });
@@ -275,8 +291,147 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Pembayaran berhasil dicatat', receipt_number: receiptNo });
     }
 
+
+    /*
+     * ── PEMBATALAN BOOKING ────────────────────────────────────────────────
+     *
+     * Sebelumnya aksi ini TIDAK ADA, padahal izin `booking.delete` sudah
+     * berlabel "Batalkan booking" dan kode di 4 tempat memeriksa status
+     * 'CANCELLED'. Akibatnya staf menghapus baris transaksi secara manual, dan
+     * itu MERUSAK pembukuan: jurnal kas/pendapatan tetap ada sementara
+     * transaksinya hilang -> neraca tidak seimbang, riwayat pembayaran lenyap.
+     *
+     * Pembatalan di sini TIDAK menghapus apa pun:
+     *   1. status transaksi -> CANCELLED (riwayat utuh)
+     *   2. pembayaran PENDING milik booking itu -> REJECTED
+     *   3. jurnal uang DIBALIK (bukan dihapus) supaya jejak audit tetap ada
+     *   4. handover perlengkapan dibatalkan + stok dikembalikan + HPP dibalik
+     *   5. semuanya tercatat di audit_log
+     */
+    if (action === 'CANCEL_BOOKING') {
+      { const cek = await requirePermission(request, 'booking.delete'); if (!cek.ok) return cek.response; }
+
+      const txId = Number(body.transaction_id ?? body.id);
+      const alasan = String(body.alasan || body.reason || '').trim();
+
+      if (!txId) {
+        return NextResponse.json({ success: false, message: 'ID transaksi wajib dikirim.' }, { status: 400 });
+      }
+      if (alasan.length < 5) {
+        return NextResponse.json({
+          success: false,
+          message: 'Alasan pembatalan wajib diisi (minimal 5 karakter) agar bisa dipertanggungjawabkan.',
+        }, { status: 400 });
+      }
+
+      const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(txId) as any;
+      if (!tx) {
+        return NextResponse.json({ success: false, message: 'Transaksi tidak ditemukan.' }, { status: 404 });
+      }
+
+      const statusAsal = statusSah(tx.status);
+      if (!statusAsal) {
+        return NextResponse.json({
+          success: false,
+          message: `Status transaksi "${tx.status}" tidak dikenal. Perbaiki statusnya lebih dulu.`,
+        }, { status: 409 });
+      }
+      if (statusAsal === 'CANCELLED') {
+        return NextResponse.json({ success: false, message: 'Booking ini sudah dibatalkan.' }, { status: 409 });
+      }
+      if (!bolehTransisi(statusAsal, 'CANCELLED')) {
+        return NextResponse.json({
+          success: false,
+          message: `Tidak boleh membatalkan booking berstatus ${LABEL_STATUS[statusAsal].teks}.`,
+        }, { status: 409 });
+      }
+
+      const hasil = db.transaction(() => {
+        const tgl = tanggalWib();
+
+        // 1) Status transaksi
+        db.prepare('UPDATE transactions SET status = ?, notes = COALESCE(notes, ?) WHERE id = ?')
+          .run('CANCELLED', `Dibatalkan: ${alasan}`, txId);
+
+        // 2) Pembayaran yang masih menunggu -> ditolak
+        const pending = db.prepare(
+          "UPDATE payment_history SET status = 'REJECTED', notes = COALESCE(notes,'') || ' (batal: ' || ? || ')' WHERE transaction_id = ? AND status IN ('PENDING','WAITING_APPROVAL')",
+        ).run(alasan, txId);
+
+        // 3) BALIK jurnal uang (bukan hapus) untuk setiap pembayaran APPROVED
+        const dibayar = db.prepare(
+          "SELECT COALESCE(SUM(amount),0) s FROM payment_history WHERE transaction_id = ? AND status = 'APPROVED'",
+        ).get(txId) as { s: number };
+
+        const nominalDibalik = Number(dibayar.s) || 0;
+
+        let jurnalBalik = 0;
+        if (nominalDibalik > 0) {
+          const akunKas = akunKasDefault();
+          const akunPendapatan = akunPendapatanDefault();
+          if (!akunKas || !akunPendapatan) throw new Error('Akun kas/pendapatan default tidak ditemukan di COA');
+
+          const ket = `Pembatalan booking ${tx.booking_code} — ${alasan}`;
+          // Kebalikan dari jurnal penerimaan: Dr Pendapatan / Cr Kas
+          tulisLedger(
+            { transactionId: txId },
+            { coaAccountId: akunPendapatan, entryType: 'DEBIT', amount: nominalDibalik, description: ket, entryDate: tgl, reference: `BATAL-${tx.booking_code}` },
+          );
+          tulisLedger(
+            { transactionId: txId },
+            { coaAccountId: akunKas, entryType: 'CREDIT', amount: nominalDibalik, description: ket, entryDate: tgl, reference: `BATAL-${tx.booking_code}` },
+          );
+          jurnalBalik = 2;
+        }
+
+        /*
+         * 4) Perlengkapan yang sudah diserahkan: stok dikembalikan dan HPP
+         *    dibalik agar beban tidak menggantung pada booking yang batal.
+         */
+        const handovers = db.prepare('SELECT id, item_id, qty FROM inventory_handover WHERE transaction_id = ?').all(txId) as any[];
+        let stokKembali = 0;
+        for (const h of handovers) {
+          db.prepare('UPDATE inventory_items SET stock_total = stock_total + ? WHERE id = ?').run(Number(h.qty) || 0, h.item_id);
+          hapusHppPenyerahan(db, h.id);
+          db.prepare('DELETE FROM inventory_handover WHERE id = ?').run(h.id);
+          stokKembali += Number(h.qty) || 0;
+        }
+
+        // Checklist ditandai belum supaya tidak dianggap selesai
+        db.prepare("UPDATE jamaah_checklist SET status = 'BELUM', notes = COALESCE(notes,'') || ' (batal)' WHERE jamaah_id = (SELECT jamaah_id FROM transactions WHERE id = ?)")
+          .run(txId);
+
+        catatAudit({
+          user: auth.user,
+          action: 'DELETE',
+          module: 'transaction',
+          recordId: txId,
+          before: { status: tx.status, paid_amount: Number(tx.paid_amount) || 0 },
+          after: { status: 'CANCELLED', dibalik: nominalDibalik, pembayaran_ditolak: pending.changes, stok_kembali: stokKembali },
+          notes: `Pembatalan: ${alasan}`,
+        });
+
+        return {
+          dibayar: nominalDibalik,
+          jurnalBalik,
+          pembayaranDitolak: pending.changes,
+          stokKembali,
+        };
+      })();
+
+      return NextResponse.json({
+        success: true,
+        message:
+          `Booking ${tx.booking_code} dibatalkan. ` +
+          `Jurnal dibalik Rp ${hasil.dibayar.toLocaleString('id-ID')}, ` +
+          `${hasil.pembayaranDitolak} pembayaran menunggu ditolak, ` +
+          `${hasil.stokKembali} item dikembalikan ke stok. Riwayat tetap utuh.`,
+        ...hasil,
+      });
+    }
+
     return NextResponse.json({ success: false, message: 'Action tidak valid' }, { status: 400 });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'admin/transactions' });
   }
 }

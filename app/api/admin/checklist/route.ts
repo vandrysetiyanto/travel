@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { galatServer } from '@/lib/galat';
 import db, { initDB } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { requirePermission, catatAudit } from '@/lib/permissions';
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ success: true, master });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'admin/checklist' });
   }
 }
 
@@ -174,6 +175,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: false, message: 'Aksi tidak dikenali' }, { status: 400 });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'admin/checklist' });
   }
 }

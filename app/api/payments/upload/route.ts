@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { galatServer } from '@/lib/galat';
 import db from '@/lib/db';
 import { generateReceiptNumber } from '@/lib/utils';
 import { recalcTransaction } from '@/lib/booking';
@@ -83,6 +84,6 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error('Upload Proof Error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'payments/upload' });
   }
 }

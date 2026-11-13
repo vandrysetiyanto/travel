@@ -309,6 +309,57 @@ export function initDB() {
     console.error('[initDB] migrasi users.role_id gagal:', (e as Error).message);
   }
 
+  /*
+   * ── INDEKS UNTUK QUERY LAPORAN ────────────────────────────────────────────
+   *
+   * Sebelumnya empat kolom yang dipakai di hampir semua laporan tidak punya
+   * indeks. Dengan data kecil tidak terasa, tetapi setelah ribuan transaksi:
+   *   - laporan laba rugi/neraca memindai SELURUH tabel ledger
+   *   - daftar transaksi & hitung kuota batch memindai seluruh transactions
+   * Hasilnya laporan makin lambat dan CPU naik tepat saat produksi berjalan.
+   *
+   * IF NOT EXISTS: aman dijalankan berulang setiap boot.
+   */
+  try {
+    const indeks = [
+      'CREATE INDEX IF NOT EXISTS idx_ledger_coa       ON ledger(coa_account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_ledger_handover  ON ledger(handover_id)',
+      'CREATE INDEX IF NOT EXISTS idx_tx_batch         ON transactions(batch_id)',
+      'CREATE INDEX IF NOT EXISTS idx_tx_jamaah        ON transactions(jamaah_id)',
+      'CREATE INDEX IF NOT EXISTS idx_tx_status        ON transactions(status)',
+      'CREATE INDEX IF NOT EXISTS idx_pay_tx           ON payment_history(transaction_id)',
+      'CREATE INDEX IF NOT EXISTS idx_bj_transaction   ON booking_jamaah(transaction_id)',
+      'CREATE INDEX IF NOT EXISTS idx_handover_item    ON inventory_handover(item_id)',
+    ];
+    for (const sql of indeks) db.exec(sql);
+  } catch (e) {
+    console.error('[initDB] gagal membuat indeks:', (e as Error).message);
+  }
+
+  /*
+   * ── MIGRASI BERSVERSI ─────────────────────────────────────────────────────
+   *
+   * Dijalankan SEBELUM blok ensureColumn lama. Hasilnya: PRAGMA user_version
+   * naik dan setiap perubahan tercatat di tabel schema_migrations, sehingga
+   * versi skema database produksi bisa diketahui kapan saja.
+   *
+   * Blok ensureColumn di bawah DIPERTAHANKAN sementara sebagai jaring pengaman
+   * untuk database yang dibuat sebelum mekanisme ini ada; perubahan baru WAJIB
+   * ditulis sebagai entri di lib/migrasi.ts, bukan sebagai ensureColumn baru.
+   */
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { jalankanMigrasi, versiSkema } = require('@/lib/migrasi');
+    const hasil = jalankanMigrasi(db);
+    if (hasil.dijalankan.length) {
+      console.log(`[initDB] migrasi ${hasil.dari} -> ${hasil.ke}: ${hasil.dijalankan.join(', ')}`);
+    } else {
+      console.log(`[initDB] skema versi ${versiSkema(db)} (tidak ada migrasi tertunda)`);
+    }
+  } catch (e) {
+    console.error('[initDB] migrasi gagal:', (e as Error).message);
+  }
+
   // Migrasi kolom untuk database yang sudah berjalan (aman diulang).
   ensureColumn('master_jamaah', 'group_code', 'group_code TEXT');
   ensureColumn('transactions', 'total_pilgrims', 'total_pilgrims INTEGER NOT NULL DEFAULT 1');
@@ -642,6 +693,20 @@ initDB();
    * sehingga rencana eksekusi memburuk seiring data bertambah (laporan melambat
    * tanpa gejala). Dijalankan sekali saat boot; sangat ringan.
    */
+  /*
+   * Checkpoint WAL saat boot.
+   *
+   * File -wal pernah mencapai 5,2 MB sementara database hanya 476 KB: WAL tidak
+   * pernah ditutup penuh karena koneksi aplikasi selalu hidup. Tanpa checkpoint
+   * berkala, -wal tumbuh terus, pembacaan melambat, dan pemulihan setelah crash
+   * butuh waktu lebih lama. TRUNCATE memangkas file ke nol setelah disalin ke DB.
+   */
+  try {
+    db.pragma('wal_checkpoint(TRUNCATE)');
+  } catch (e) {
+    console.error('[initDB] wal_checkpoint gagal:', (e as Error).message);
+  }
+
   try {
     db.pragma('optimize');
   } catch (e) {

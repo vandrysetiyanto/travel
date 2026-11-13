@@ -1,6 +1,7 @@
 // Turunan data dari skema baru (transactions + payment_history) supaya bentuk
 // respons tetap sama dengan yang diharapkan komponen UI (TrackForm dkk).
 import db from './db';
+import { statusDariNominal } from '@/lib/status-booking';
 
 /** Jumlah jemaah dalam satu booking: ambil dari kolom total_pilgrims,
  *  fallback hitung dari jemaah yang terhubung lewat group_code. */
@@ -65,7 +66,8 @@ export function recalcTransaction(transactionId: number) {
    * dan pemanggil lain.
    */
   const remaining = tagihan - paid;
-  const status = paid >= tagihan && tagihan > 0 ? 'PAID' : paid > 0 ? 'DP' : 'PENDING';
+  // Status dihitung dari nominal lewat satu sumber (lib/status-booking).
+  const status = statusDariNominal(tagihan, paid);
 
   db.prepare('UPDATE transactions SET paid_amount = ?, remaining_amount = ?, status = ? WHERE id = ?').run(
     paid,

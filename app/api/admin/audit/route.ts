@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { galatServer } from '@/lib/galat';
 import db, { initDB } from '@/lib/db';
 import { requirePermission } from '@/lib/permissions';
 
@@ -41,6 +42,6 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, total, rows, modul, aksi, limit, offset });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'admin/audit' });
   }
 }

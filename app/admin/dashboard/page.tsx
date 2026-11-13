@@ -1,54 +1,23 @@
 'use client';
 
-/* Tanggal hari ini menurut WIB — jangan pakai toISOString() yang berbasis UTC,
-   karena pukul 00:00–06:59 WIB akan menghasilkan tanggal kemarin. */
-const hariIniWib = () =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+import { fmt, fmtRp, hariIniWib } from '@/components/dashboard/format';
+
+import { MasterJamaah, MasterPaket, MasterBatches, MasterInventaris } from '@/components/dashboard/master';
+import { LaporanTab, LedgerTab, StockLedgerTab, GeneralJournalTab } from '@/components/dashboard/keuangan';
+import { ChecklistTab, ManifestTab, RegistrationsTab } from '@/components/dashboard/operasional';
+
+import { EmptyState, StatusBadge, DocBadge, FInput, ToastContainer } from '@/components/dashboard/ui-dasar';
+
 
 /* ===================== EMPTY STATE HELPER ===================== */
-function EmptyState({ icon, title, description, actionText, onAction }: {
-  icon: string; title: string; description: string; actionText?: string; onAction?: () => void;
-}) {
-  return (
-    <div className="py-12 px-4 text-center flex flex-col items-center justify-center">
-
-      <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-3xl mb-3 border border-slate-200 shadow-xs">
-        {icon}
-      </div>
-      <h4 className="font-extrabold text-slate-800 text-base">{title}</h4>
-      <p className="text-xs text-slate-500 max-w-sm mt-1 mb-4 leading-relaxed">{description}</p>
-      {actionText && onAction && (
-        <button onClick={onAction} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow-xs">
-          {actionText}
-        </button>
-      )}
-    </div>
-  );
-}
 
 /* ===================== TOAST NOTIFICATION ===================== */
-function ToastContainer({ toast, onClose }: { toast: { msg: string; type: 'success' | 'error' | 'info' } | null; onClose: () => void }) {
-  if (!toast) return null;
-  const isSuccess = toast.type === 'success';
-  const isError = toast.type === 'error';
 
-  return (
-    <div className="fixed bottom-5 right-5 z-50 animate-in slide-in-from-bottom-5 duration-300">
-      <div className={"flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border text-sm font-medium " + 
-        (isSuccess ? "bg-slate-900 text-white border-emerald-500/40" : isError ? "bg-rose-950 text-rose-100 border-rose-500/40" : "bg-slate-900 text-white border-slate-700")}>
-        <span className="text-lg">{isSuccess ? "" : isError ? "" : ""}</span>
-        <span className="max-w-xs">{toast.msg}</span>
-        <button onClick={onClose} className="text-slate-400 hover:text-white ml-2 text-xs"></button>
-      </div>
-    </div>
-  );
-}
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { CheckSquare, FileText, Calculator, Wallet, LayoutDashboard, Users, Package, Boxes, ShoppingBag, Receipt, TrendingUp, Plane, ClipboardList, Building2, ShieldCheck, LogOut, Menu, X, CheckCircle2, Clock, AlertCircle, RefreshCw, BookOpen, CreditCard, FileSpreadsheet, KeyRound, History } from 'lucide-react';
 
 
-const fmt = (n: number) => new Intl.NumberFormat('id-ID').format(n);
-const fmtRp = (n: number) => 'Rp ' + fmt(n);
+
 
 type Tab = 'dashboard' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings';
 type MasterSub = 'jamaah' | 'paket' | 'inventaris';
@@ -131,60 +100,12 @@ function DashboardTab({ isOwner }: { isOwner: boolean }) {
   );
 }
 
-function StatusBadge({ s }: { s: string }) {
-  const isPaid = s === 'PAID';
-  const isDp = s === 'DP';
-  const isPending = s === 'PENDING';
-  
-  const style = isPaid 
-    ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-    : isDp 
-    ? 'bg-amber-50 text-amber-700 border-amber-200' 
-    : isPending 
-    ? 'bg-rose-50 text-rose-700 border-rose-200' 
-    : 'bg-slate-100 text-slate-600 border-slate-200';
 
-  const dot = isPaid ? 'bg-emerald-500' : isDp ? 'bg-amber-500' : isPending ? 'bg-rose-500' : 'bg-slate-400';
-
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${style}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-      {s === 'PAID' ? 'Lunas' : s === 'DP' ? 'Sudah DP' : s === 'PENDING' ? 'Menunggu' : s}
-    </span>
-  );
-}
-
-function DocBadge({ s }: { s: string }) {
-  const c = s === 'SUDAH' || s === 'ISSUED' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
-  return <span className={'px-2 py-0.5 rounded text-xs font-medium ' + c}>{s}</span>;
-}
 
 /* Field input generik untuk form master. WAJIB di level modul (BUKAN di dalam
    komponen): kalau dideklarasikan di dalam, React menganggapnya tipe komponen
    baru tiap render -> <input> di-unmount & di-mount ulang tiap ketikan ->
    fokus hilang dan kursor melompat. */
-function FInput({ label, field, type, form, setForm, placeholder, maxLength }: {
-  label: string; field: string; type?: string;
-  form: any; setForm: (updater: (prev: any) => any) => void;
-  placeholder?: string; maxLength?: number;
-}) {
-  const isNum = type === 'number';
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-      <input
-        type={type || 'text'}
-        inputMode={isNum ? 'numeric' : undefined}
-        pattern={isNum ? '[0-9]*' : undefined}
-        placeholder={placeholder}
-        maxLength={maxLength}
-        value={form[field] || ''}
-        onChange={e => setForm((p: any) => ({ ...p, [field]: e.target.value }))}
-        className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-      />
-    </div>
-  );
-}
 
 /* ===================== MASTER TAB ===================== */
 function MasterTab({ sub, setSub }: { sub: MasterSub; setSub: (s: MasterSub) => void }) {
@@ -211,568 +132,13 @@ function MasterTab({ sub, setSub }: { sub: MasterSub; setSub: (s: MasterSub) => 
 }
 
 /* --- Master Jamaah --- */
-function MasterJamaah() {
-  const [list, setList] = useState<any[]>([]);
-  const [search, setSearch] = useState('');
-  const [mode, setMode] = useState<'idle'|'open'>('idle');
-  const [form, setForm] = useState<any>({});
-  const [ocrLoading, setOcrLoading] = useState<string>('');
-  const ktpFileRef = useRef<HTMLInputElement>(null);
-  const kkFileRef = useRef<HTMLInputElement>(null);
-  const paspFileRef = useRef<HTMLInputElement>(null);
-
-  const load = useCallback(() => {
-    const q = search ? `?search=${encodeURIComponent(search)}` : '';
-    fetch('/api/admin/jamaah' + q).then(r => r.json()).then(d => { if (d.success) setList(d.jamaah || []); });
-  }, [search]);
-  useEffect(() => { load(); }, [load]);
-
-  const openAdd = () => { setForm({}); setMode('open'); };
-  const openEdit = (j: any) => { setForm(j); setMode('open'); };
-
-  const mergeKeep = (p: any, patch: Record<string, any>) => {
-    const next = { ...p };
-    // Map alias kunci OCR ke field form admin
-    const keyMap: Record<string, string> = {
-      noKK: 'no_kk',
-      fullName: 'full_name',
-      birthPlace: 'birth_place',
-      birthDate: 'birth_date',
-      passportNumber: 'passport_number',
-      passportExpiry: 'passport_expiry_date',
-      passportExpiryDate: 'passport_expiry_date'
-    };
-
-    for (const [k, v] of Object.entries(patch)) {
-      if (!v) continue;
-      const targetKey = keyMap[k] || k;
-      // Khusus gender atau field yang ada nilai default 'L', selalu perbarui jika d.data menyediakannya
-      if (targetKey === 'gender') {
-        next[targetKey] = v;
-      } else if (!next[targetKey]) {
-        next[targetKey] = v;
-      }
-    }
-    return next;
-  };
-
-  const handleOCR = async (docType: 'KTP'|'KK'|'PASPOR', fileRef: React.RefObject<HTMLInputElement>) => {
-    const file = fileRef.current?.files?.[0];
-    if (!file) return (window as any).__showAdminToast ? (window as any).__showAdminToast('Pilih file gambar terlebih dahulu', 'error') : alert('Pilih file gambar terlebih dahulu');
-    setOcrLoading(docType);
-    const fd = new FormData(); fd.append('image', file); fd.append('docType', docType);
-    try {
-      const res = await fetch('/api/ocr', { method: 'POST', body: fd });
-      const d = await res.json();
-      if (d.success && d.data) {
-        setForm((prev: any) => mergeKeep(prev, d.data));
-        (window as any).__showAdminToast ? (window as any).__showAdminToast(`Berhasil scan ${docType}!`, 'success') : alert(`Berhasil scan ${docType}!`);
-      } else {
-        alert(d.message || 'OCR gagal mengenali teks');
-      }
-    } catch (e: any) {
-      alert('Gagal OCR: ' + e.message);
-    }
-    setOcrLoading('');
-  };
-
-  const save = async () => {
-    if (!form.nik || !form.full_name) return (window as any).__showAdminToast ? (window as any).__showAdminToast('NIK dan Nama wajib diisi', 'error') : alert('NIK dan Nama wajib diisi');
-    const res = await fetch('/api/admin/jamaah', { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify({ action: form.id ? 'UPDATE_JAMAAH' : 'CREATE_JAMAAH', ...form }) 
-    });
-    const d = await res.json(); 
-    (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, d.success ? 'success' : 'error') : alert(d.message); 
-    if (d.success) { setMode('idle'); setForm({}); load(); }
-  };
-
-  const remove = async (id: number) => {
-    if (!confirm('Hapus data jamaah ini?')) return;
-    const res = await fetch('/api/admin/jamaah', { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify({ action: 'DELETE_JAMAAH', id }) 
-    });
-    const d = await res.json(); 
-    if (d.success) load(); 
-    else alert(d.message);
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Header & Search Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div>
-          <h3 className="text-base font-black text-slate-900">Database Data Jamaah</h3>
-          <p className="text-xs text-slate-500">Pusat data informasi pribadi, paspor, dan dokumen jemaah.</p>
-        </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <input 
-            value={search} 
-            onChange={e => setSearch(e.target.value)} 
-            className="w-full sm:w-64 border rounded-xl px-3 py-2 text-xs" 
-            placeholder="Cari NIK, Nama, atau No HP..." 
-          />
-          <button onClick={openAdd} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition shrink-0">+ Tambah Jamaah</button>
-        </div>
-      </div>
-
-      {/* Modal Form Centered Pop-up */}
-      {mode === 'open' && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-base font-black text-slate-900">{form.id ? 'Edit Data Jamaah' : 'Tambah Jamaah Baru'}</h3>
-                <p className="text-xs text-slate-500">Lengkapi data pribadi dan dokumen pendukung.</p>
-              </div>
-              <button onClick={() => setMode('idle')} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
-            </div>
-
-            {/* OCR Smart Scan Section */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200/60">
-              <div className="space-y-2">
-                <p className="text-xs font-bold text-slate-700">Scan KTP (AI OCR)</p>
-                <div className="flex gap-2">
-                  <input type="file" accept="image/*" ref={ktpFileRef} className="hidden" onChange={() => handleOCR('KTP', ktpFileRef)} />
-                  <button onClick={() => ktpFileRef.current?.click()} disabled={ocrLoading === 'KTP'} className="w-full bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold py-1.5 px-3 rounded-lg text-xs transition">
-                    {ocrLoading === 'KTP' ? 'Memproses...' : 'Upload KTP'}
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <p className="text-xs font-bold text-slate-700">Scan Kartu Keluarga (KK)</p>
-                <div className="flex gap-2">
-                  <input type="file" accept="image/*" ref={kkFileRef} className="hidden" onChange={() => handleOCR('KK', kkFileRef)} />
-                  <button onClick={() => kkFileRef.current?.click()} disabled={ocrLoading === 'KK'} className="w-full bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold py-1.5 px-3 rounded-lg text-xs transition">
-                    {ocrLoading === 'KK' ? 'Memproses...' : 'Upload KK'}
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <p className="text-xs font-bold text-slate-700">Scan Paspor</p>
-                <div className="flex gap-2">
-                  <input type="file" accept="image/*" ref={paspFileRef} className="hidden" onChange={() => handleOCR('PASPOR', paspFileRef)} />
-                  <button onClick={() => paspFileRef.current?.click()} disabled={ocrLoading === 'PASPOR'} className="w-full bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold py-1.5 px-3 rounded-lg text-xs transition">
-                    {ocrLoading === 'PASPOR' ? 'Memproses...' : 'Upload Paspor'}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Form Fields Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <FInput label="NIK KTP *" field="nik" form={form} setForm={setForm} placeholder="3201xxxxxxxxxxxx"/>
-              <FInput label="Nama Lengkap *" field="full_name" form={form} setForm={setForm} placeholder="Sesuai KTP"/>
-              <FInput label="Nomor WhatsApp / HP *" field="phone" form={form} setForm={setForm} placeholder="0812xxxxxxxx"/>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Jenis Kelamin</label>
-                <select value={form.gender || 'L'} onChange={e => setForm({...form, gender: e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
-                  <option value="L">Laki-laki</option>
-                  <option value="P">Perempuan</option>
-                </select>
-              </div>
-              <FInput label="Tempat Lahir" field="birth_place" form={form} setForm={setForm} placeholder="Jakarta"/>
-              <FInput label="Tanggal Lahir" field="birth_date" type="date" form={form} setForm={setForm}/>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Alamat Sesuai KTP</label>
-                <input value={form.address || ''} onChange={e => setForm({...form, address: e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" placeholder="Jl. Raya No. 123, RT/RW..."/>
-              </div>
-              <FInput label="Nomor Paspor" field="passport_number" form={form} setForm={setForm} placeholder="A1234567"/>
-              <FInput label="Tanggal Terbit Paspor" field="passport_issue_date" type="date" form={form} setForm={setForm}/>
-              <FInput label="Tanggal Expired Paspor" field="passport_expiry_date" type="date" form={form} setForm={setForm}/>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Status Visa</label>
-                <select value={form.visa_status || 'PENDING'} onChange={e => setForm({...form, visa_status: e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
-                  <option value="PENDING">Pending</option>
-                  <option value="PROCESSING">Processing</option>
-                  <option value="APPROVED">Approved</option>
-                </select>
-              </div>
-              <FInput label="Kontak Darurat (Nama & HP)" field="emergency_contact" form={form} setForm={setForm} placeholder="Budi (0812...)"/>
-              <FInput label="Riwayat Penyakit / Alergi" field="medical_notes" form={form} setForm={setForm} placeholder="Asam lambung / Hipertensi"/>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-              <button onClick={() => setMode('idle')} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
-              <button onClick={save} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Simpan Jamaah</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Jamaah Table View */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
-              <th className="p-3">NIK</th>
-              <th className="p-3">Nama Lengkap</th>
-              <th className="p-3">L/P</th>
-              <th className="p-3">No. HP</th>
-              <th className="p-3">Paspor</th>
-              <th className="p-3">Visa</th>
-              <th className="p-3 text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {list.map((j: any) => (
-              <tr key={j.id} className="hover:bg-slate-50 transition">
-                <td className="p-3 font-mono text-slate-500 font-bold">{j.nik}</td>
-                <td className="p-3 font-bold text-slate-900">{j.full_name}</td>
-                <td className="p-3 text-slate-600">{j.gender}</td>
-                <td className="p-3 font-mono text-slate-600">{j.phone}</td>
-                <td className="p-3 font-mono text-slate-600">{j.passport_number || '-'}</td>
-                <td className="p-3"><DocBadge s={j.visa_status}/></td>
-                <td className="p-3 text-right space-x-2">
-                  <button onClick={() => openEdit(j)} className="text-indigo-600 hover:underline font-bold">Edit</button>
-                  <button onClick={() => remove(j.id)} className="text-rose-600 hover:underline font-bold">Hapus</button>
-                </td>
-              </tr>
-            ))}
-            {list.length === 0 && (
-              <tr><td colSpan={7} className="text-center py-8 text-slate-400">Belum ada data jemaah terdaftar.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 /* --- Master Paket --- */
 /* --- Master Paket --- */
-function MasterPaket() {
-  const [packages, setPackages] = useState<any[]>([]);
-  const [pkgMode, setPkgMode] = useState<'idle'|'add'|'edit'>('idle');
-  const [form, setForm] = useState<any>({});
-
-  const load = () => { fetch('/api/admin/packages').then(r=>r.json()).then(d=>{ if(d.success){setPackages(d.packages||[]);} }); };
-  useEffect(()=>{load();},[]);
-
-  const save = async () => {
-    if(!form.name||!form.price) return alert('Nama dan harga wajib diisi');
-    const action = pkgMode === 'edit' ? 'UPDATE_PACKAGE' : 'CREATE_PACKAGE';
-    const res = await fetch('/api/admin/packages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form, action})});
-    const d = await res.json(); 
-    if(d.success){
-      alert('Paket berhasil disimpan');
-      setPkgMode('idle');
-      setForm({});
-      load();
-    } else {
-      alert(d.message || 'Gagal menyimpan paket');
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div>
-          <h3 className="text-base font-black text-slate-900">Katalog Paket Perjalanan</h3>
-          <p className="text-xs text-slate-500">Manajemen program paket umroh/haji dan fasilitas utama.</p>
-        </div>
-        <button onClick={()=>{setForm({});setPkgMode('add');}} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition">+ Tambah Paket</button>
-      </div>
-
-      {pkgMode !== 'idle' && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="text-base font-black text-slate-900">{pkgMode==='edit'?'Edit Paket Perjalanan':'Tambah Paket Perjalanan Baru'}</h3>
-              <button onClick={()=>setPkgMode('idle')} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <FInput label="Nama Paket *" field="name" form={form} setForm={setForm} placeholder="Contoh: Umroh Reguler 9 Hari"/>
-              <FInput label="Kategori" field="category" form={form} setForm={setForm} placeholder="Reguler / VIP"/>
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Harga (Rp) *</label>
-                  <span className="text-[11px] font-bold text-emerald-600">{form.price ? fmtRp(Number(form.price)) : ''}</span>
-                </div>
-                <input type="number" inputMode="numeric" pattern="[0-9]*" value={form.price||''} onChange={e=>setForm({...form,price:e.target.value})} placeholder="35000000" className="w-full border rounded-xl px-3 py-2 text-xs font-mono" />
-              </div>
-              <FInput label="Durasi (Hari)" field="duration_days" type="number" form={form} setForm={setForm} placeholder="9"/>
-              <FInput label="Hotel Makkah" field="hotel_makkah" form={form} setForm={setForm} placeholder="Pullman Zamzam"/>
-              <FInput label="Hotel Madinah" field="hotel_madinah" form={form} setForm={setForm} placeholder="Front Pekan"/>
-              <FInput label="Maskapai" field="airline" form={form} setForm={setForm} placeholder="Saudia Airlines"/>
-              <FInput label="Kota Berangkat" field="departure_city" form={form} setForm={setForm} placeholder="Jakarta"/>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Deskripsi & Fasilitas</label>
-                <textarea value={form.description||''} onChange={e=>setForm({...form,description:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" rows={3} placeholder="Fasilitas termasuk tiket pesawat, visa, bus AC, dll..."/>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-              <button onClick={()=>setPkgMode('idle')} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
-              <button onClick={save} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Simpan Paket</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
-              <th className="p-3">Nama Paket</th>
-              <th className="p-3">Kategori</th>
-              <th className="p-3">Harga</th>
-              <th className="p-3">Durasi</th>
-              <th className="p-3">Hotel (Makkah / Madinah)</th>
-              <th className="p-3">Maskapai</th>
-              <th className="p-3 text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {packages.map((p:any)=>(
-              <tr key={p.id} className="hover:bg-slate-50 transition">
-                <td className="p-3 font-bold text-slate-900">{p.name}</td>
-                <td className="p-3 text-slate-600">{p.category}</td>
-                <td className="p-3 font-mono font-bold text-emerald-600">{fmtRp(p.price)}</td>
-                <td className="p-3 text-slate-600">{p.duration_days} hari</td>
-                <td className="p-3 text-slate-600">{p.hotel_makkah} / {p.hotel_madinah}</td>
-                <td className="p-3 text-slate-600">{p.airline}</td>
-                <td className="p-3 text-right">
-                  <button onClick={()=>{setForm(p);setPkgMode('edit');}} className="text-indigo-600 hover:underline font-bold">Edit</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 /* --- Master Batches --- */
-function MasterBatches() {
-  const [batches, setBatches] = useState<any[]>([]);
-  const [packages, setPackages] = useState<any[]>([]);
-  const [batchMode, setBatchMode] = useState<'idle'|'add'|'edit'>('idle');
-  const [batchForm, setBatchForm] = useState<any>({});
-
-  const load = () => { 
-    fetch('/api/admin/packages').then(r=>r.json()).then(d=>{ 
-      if(d.success){
-        setBatches(d.batches||[]);
-        setPackages(d.packages||[]);
-      } 
-    }); 
-  };
-  useEffect(()=>{load();},[]);
-
-  const saveBatch = async () => {
-    if(!batchForm.package_id||!batchForm.batch_name||!batchForm.departure_date||!batchForm.return_date) return alert('Paket, nama batch, dan tanggal wajib diisi');
-    const action = batchMode === 'edit' ? 'UPDATE_BATCH' : 'CREATE_BATCH';
-    const res = await fetch('/api/admin/packages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...batchForm, action})});
-    const d = await res.json(); 
-    if(d.success){
-      alert('Batch berhasil disimpan');
-      setBatchMode('idle');
-      setBatchForm({});
-      load();
-    } else {
-      alert(d.message || 'Gagal menyimpan batch');
-    }
-  };
-
-  const deleteBatch = async (id: number) => {
-    if(!confirm('Hapus batch ini?')) return;
-    const res = await fetch('/api/admin/packages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'DELETE_BATCH', id})});
-    const d = await res.json(); 
-    if(d.success) load(); 
-    else alert(d.message);
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div>
-          <h3 className="text-base font-black text-slate-900">Jadwal & Batch Keberangkatan</h3>
-          <p className="text-xs text-slate-500">Manajemen kuota kursi, jadwal musim, dan status operasional.</p>
-        </div>
-        <button onClick={()=>{setBatchForm({});setBatchMode('add');}} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition">+ Tambah Batch</button>
-      </div>
-
-      {batchMode !== 'idle' && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="text-base font-black text-slate-900">{batchMode==='edit'?'Edit Batch Keberangkatan':'Tambah Batch Keberangkatan Baru'}</h3>
-              <button onClick={()=>setBatchMode('idle')} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Pilih Paket *</label>
-                <select value={batchForm.package_id||''} onChange={e=>setBatchForm({...batchForm, package_id:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
-                  <option value="">-- Pilih Paket Perjalanan --</option>
-                  {packages.map((p:any)=>(<option key={p.id} value={p.id}>{p.name} ({fmtRp(p.price)})</option>))}
-                </select>
-              </div>
-              <FInput label="Nama Batch / Musim *" field="batch_name" form={batchForm} setForm={setBatchForm} placeholder="Batch 1 - Oktober"/>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Status Batch</label>
-                <select value={batchForm.status||'OPEN'} onChange={e=>setBatchForm({...batchForm,status:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
-                  <option value="OPEN">Open</option><option value="FULL">Full</option><option value="CLOSED">Closed</option>
-                </select>
-              </div>
-              <FInput label="Tanggal Berangkat *" field="departure_date" type="date" form={batchForm} setForm={setBatchForm}/>
-              <FInput label="Tanggal Pulang *" field="return_date" type="date" form={batchForm} setForm={setBatchForm}/>
-              <FInput label="Kuota Kursi *" field="quota" type="number" form={batchForm} setForm={setBatchForm} placeholder="45"/>
-            </div>
-            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-              <button onClick={()=>setBatchMode('idle')} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
-              <button onClick={saveBatch} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Simpan Batch</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
-              <th className="p-3">Nama Batch</th>
-              <th className="p-3">Paket</th>
-              <th className="p-3">Berangkat</th>
-              <th className="p-3">Pulang</th>
-              <th className="p-3 text-center">Kuota</th>
-              <th className="p-3">Status</th>
-              <th className="p-3 text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {batches.map((b:any)=>(
-              <tr key={b.id} className="hover:bg-slate-50 transition">
-                <td className="p-3 font-bold text-slate-900">{b.batch_name}</td>
-                <td className="p-3 text-slate-600">{b.package_name}</td>
-                <td className="p-3 font-mono text-slate-600">{b.departure_date}</td>
-                <td className="p-3 font-mono text-slate-600">{b.return_date}</td>
-                <td className="p-3 text-center font-mono font-bold text-slate-900">{b.quota}</td>
-                <td className="p-3"><StatusBadge s={b.status}/></td>
-                <td className="p-3 text-right space-x-2">
-                  <button onClick={()=>{setBatchForm(b);setBatchMode('edit');}} className="text-indigo-600 hover:underline font-bold">Edit</button>
-                  <button onClick={()=>deleteBatch(b.id)} className="text-rose-600 hover:underline font-bold">Hapus</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 /* --- Master Inventaris --- */
-function MasterInventaris() {
-  const [items, setItems] = useState<any[]>([]);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<any>({});
-
-  const load = () => { fetch('/api/admin/inventory').then(r=>r.json()).then(d=>{ if(d.success) setItems(d.items||[]); }); };
-  useEffect(()=>{load();},[]);
-
-  const save = async () => {
-    if(!form.code||!form.name) return alert('Kode dan Nama wajib diisi');
-    const res = await fetch('/api/admin/inventory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'ADD_ITEM',...form})});
-    const d = await res.json(); 
-    if(d.success){
-      alert('Barang inventaris berhasil disimpan');
-      setShowForm(false);
-      setForm({});
-      load();
-    } else {
-      alert(d.message || 'Gagal menyimpan barang');
-    }
-  };
-
-  const updateStock = async (id:number, stock:string, biaya?:string) => {
-    await fetch('/api/admin/inventory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'UPDATE_STOCK',item_id:id,stock_total:stock,unit_cost:biaya})});
-    load();
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div>
-          <h3 className="text-base font-black text-slate-900">Inventaris & Stok Logistik</h3>
-          <p className="text-xs text-slate-500">Manajemen perlengkapan jamaah dan mutasi stok gudang.</p>
-        </div>
-        <button onClick={()=>{setForm({});setShowForm(true);}} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition">+ Tambah Barang</button>
-      </div>
-
-      {showForm && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="text-base font-black text-slate-900">Tambah Barang Inventaris Baru</h3>
-              <button onClick={()=>setShowForm(false)} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
-            </div>
-            <div className="space-y-3">
-              <FInput label="Kode Barang *" field="code" form={form} setForm={setForm} placeholder="KOD-001"/>
-              <FInput label="Nama Barang *" field="name" form={form} setForm={setForm} placeholder="Koper / Kain Ihram"/>
-              <FInput label="Kategori" field="category" form={form} setForm={setForm} placeholder="Perlengkapan"/>
-              <FInput label="Stok Awal" field="stock_total" type="number" form={form} setForm={setForm} placeholder="100"/>
-              <div>
-                <FInput label="Harga Satuan (Rp)" field="unit_cost" type="number" form={form} setForm={setForm} placeholder="150000"/>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  Dipakai menghitung HPP saat barang diserahkan ke jamaah
-                  (Dr Beban Perlengkapan / Cr Persediaan).
-                </p>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-              <button onClick={()=>setShowForm(false)} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
-              <button onClick={save} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Simpan Barang</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
-              <th className="p-3">Kode</th>
-              <th className="p-3">Nama Barang</th>
-              <th className="p-3">Kategori</th>
-              <th className="p-3 text-center">Stok Total</th>
-              <th className="p-3 text-center">Stok Keluar</th>
-              <th className="p-3 text-right">Harga Satuan</th>
-              <th className="p-3 text-right">Aksi Update Stok</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {items.map(it=>(
-              <tr key={it.id} className="hover:bg-slate-50 transition">
-                <td className="p-3 font-mono text-slate-500 font-bold">{it.code}</td>
-                <td className="p-3 font-bold text-slate-900">{it.name}</td>
-                <td className="p-3 text-slate-600">{it.category || '-'}</td>
-                <td className="p-3 text-center font-mono font-bold text-emerald-600">{it.stock_total}</td>
-                <td className="p-3 text-center font-mono text-slate-600">{it.stock_out || 0}</td>
-                <td className="p-3 text-right">
-                  <div className="flex items-center gap-1 justify-end">
-                    <span className="text-slate-400 text-[10px]">Rp</span>
-                    <input type="number" defaultValue={it.unit_cost || 0}
-                      onBlur={e=>updateStock(it.id, String(it.stock_total), e.target.value)}
-                      className={`w-24 border rounded-lg px-2 py-1 text-xs text-right font-mono ${Number(it.unit_cost)>0?'':'border-amber-300 bg-amber-50'}`}
-                      title={Number(it.unit_cost)>0?'Harga satuan':'Belum diisi — HPP tidak akan tercatat'} />
-                  </div>
-                </td>
-                <td className="p-3 text-right">
-                  <input type="number" defaultValue={it.stock_total} onBlur={e=>updateStock(it.id, e.target.value, String(it.unit_cost||0))} className="w-20 border rounded-lg px-2 py-1 text-xs text-center font-mono" />
-                </td>
-              </tr>
-            ))}
-            {items.length===0 && <tr><td colSpan={7} className="text-center py-8 text-slate-400">Belum ada barang perlengkapan terdaftar.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 /* ===================== TRANSAKSI TAB ===================== */
 function TransaksiTab() {
@@ -782,6 +148,10 @@ function TransaksiTab() {
   const [filter, setFilter] = useState('ALL');
   const [showBooking, setShowBooking] = useState(false);
   const [detail, setDetail] = useState<any>(null);
+  // Pembatalan booking: alasan wajib diisi agar bisa dipertanggungjawabkan.
+  const [showBatal, setShowBatal] = useState(false);
+  const [alasanBatal, setAlasanBatal] = useState('');
+  const [prosesBatal, setProsesBatal] = useState(false);
   const [bookForm, setBookForm] = useState<any>({});
   const [jamaahSearch, setJamaahSearch] = useState('');
   const [payForm, setPayForm] = useState<any>({});
@@ -922,13 +292,53 @@ function TransaksiTab() {
   };
 
 
+  const batalkanBooking = async () => {
+    if (!detail) return;
+    if (alasanBatal.trim().length < 5) {
+      alert('Alasan pembatalan wajib diisi (minimal 5 karakter).');
+      return;
+    }
+    if (!confirm(`Batalkan booking ${detail.booking_code}?\n\nRiwayat tetap tersimpan dan jurnal uang akan dibalik (bukan dihapus).`)) return;
+
+    setProsesBatal(true);
+    try {
+      const res = await fetch('/api/admin/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'CANCEL_BOOKING', transaction_id: detail.id, alasan: alasanBatal.trim() }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setShowBatal(false);
+        setAlasanBatal('');
+        setDetail(null);
+        loadTx();
+        (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, 'success') : alert(d.message);
+      } else {
+        (window as any).__showAdminToast ? (window as any).__showAdminToast(d.message, 'error') : alert(d.message);
+      }
+    } catch {
+      alert('Gagal menghubungi server.');
+    } finally {
+      setProsesBatal(false);
+    }
+  };
+
   if (detail) return (
     <div className="space-y-4">
       <button onClick={()=>setDetail(null)} className="text-blue-600 hover:underline text-sm">&larr; Kembali ke Daftar Transaksi</button>
       <div className="bg-white rounded-xl shadow p-6">
         <div className="flex justify-between items-start mb-4">
           <div><h3 className="font-bold text-xl text-gray-800">{detail.booking_code}</h3><p className="text-sm text-gray-500">{detail.full_name} ({detail.nik})</p></div>
-          <StatusBadge s={detail.status}/>
+          <div className="flex items-center gap-2">
+            <StatusBadge s={detail.status}/>
+            {detail.status !== 'CANCELLED' && (
+              <button onClick={() => { setAlasanBatal(''); setShowBatal(true); }}
+                className="px-3 py-1.5 text-xs font-bold text-rose-600 border border-rose-200 rounded-xl hover:bg-rose-50">
+                Batalkan Booking
+              </button>
+            )}
+          </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div><span className="text-gray-500">Paket:</span><p className="font-medium">{detail.package_name}</p></div>
@@ -941,6 +351,33 @@ function TransaksiTab() {
           <div><span className="text-gray-500">Visa:</span><DocBadge s={detail.visa_status}/></div>
         </div>
       </div>
+      {showBatal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
+             onClick={() => setShowBatal(false)}>
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h4 className="text-sm font-black text-slate-900">Batalkan Booking {detail.booking_code}</h4>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Riwayat <b>tidak dihapus</b>. Jurnal uang dibalik (Dr Pendapatan / Cr Kas), pembayaran yang
+              menunggu ditolak, dan perlengkapan yang sudah diserahkan dikembalikan ke stok.
+            </p>
+            <div className="mt-3">
+              <label className="text-[11px] font-bold text-slate-600">Alasan pembatalan *</label>
+              <textarea value={alasanBatal} onChange={(e) => setAlasanBatal(e.target.value)} rows={3}
+                placeholder="mis. Jamaah membatalkan karena sakit"
+                className="w-full mt-1 px-3 py-2 text-sm border border-slate-200 rounded-xl" />
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setShowBatal(false)}
+                className="px-3.5 py-2 text-xs font-bold text-slate-600 rounded-xl hover:bg-slate-100">Batal</button>
+              <button onClick={batalkanBooking} disabled={prosesBatal}
+                className="px-4 py-2 text-xs font-bold bg-rose-600 text-white rounded-xl hover:bg-rose-700 disabled:opacity-40">
+                {prosesBatal ? 'Memproses…' : 'Ya, Batalkan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Payment Timeline */}
       <div className="bg-white rounded-xl shadow p-6">
         <div className="flex justify-between items-center mb-4">
@@ -1190,342 +627,6 @@ function InventoryTab() {
 
 
 /* ===================== MANIFEST TAB ===================== */
-function ManifestTab() {
-  const [manifest, setManifest] = useState<any[]>([]);
-  const [batches, setBatches] = useState<any[]>([]);
-  const [batchId, setBatchId] = useState('');
-  const [docFilter, setDocFilter] = useState<'ALL' | 'NO_VISA' | 'NO_PASSPORT'>('ALL');
-
-  const load = useCallback(() => {
-    const q = batchId ? `?batch_id=${batchId}` : '';
-    fetch('/api/admin/manifest' + q).then(r=>r.json()).then(d=>{ if(d.success){setManifest(d.manifest||[]);setBatches(d.batches||[]);} });
-  }, [batchId]);
-  useEffect(()=>{load();},[load]);
-
-  const filteredManifest = manifest.filter(m => {
-    if (docFilter === 'NO_VISA') return m.visa_status !== 'ISSUED';
-    if (docFilter === 'NO_PASSPORT') return m.passport_status !== 'SUDAH' || !m.passport_number;
-    return true;
-  });
-
-  const missingPassportCount = manifest.filter(m => m.passport_status !== 'SUDAH' || !m.passport_number).length;
-  const missingVisaCount = manifest.filter(m => m.visa_status !== 'ISSUED').length;
-
-  const exportExcel = () => {
-    import('xlsx').then(XLSX => {
-      const data = filteredManifest.map((m:any,i:number)=>({'No':i+1,'Nama':m.full_name,'NIK':m.nik,'JK':m.gender,'TTL':m.birth_place+', '+m.birth_date,'No. Paspor':m.passport_number||'-','Exp Paspor':m.passport_expiry||'-','Paspor':m.passport_status,'Visa':m.visa_status,'HP':m.phone,'Paket':m.package_name,'Batch':m.batch_name,'Berangkat':m.departure_date,'Maskapai':m.airline,'Hotel Makkah':m.hotel_makkah,'Hotel Madinah':m.hotel_madinah}));
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Manifest Keberangkatan");
-      XLSX.writeFile(wb, `Manifest-Keberangkatan-${batchId || 'Semua'}.xlsx`);
-    }).catch(() => alert('Library xlsx belum siap'));
-  };
-
-  const printManifest = () => {
-    const w = window.open('', '', 'width=900,height=800');
-    if (!w) return;
-    w.document.write(`
-      <html>
-        <head>
-          <title>Manifest Keberangkatan Jamaah</title>
-          <style>
-            body { font-family: sans-serif; padding: 20px; color: #1e293b; }
-            h2, p { margin: 0 0 5px 0; }
-            .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: flex-end; }
-            table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px; }
-            th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
-            th { background: #f1f5f9; font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div>
-              <h2>MANIFEST KEBERANGKATAN JAMAAH</h2>
-              <p>Total Jamaah: ${filteredManifest.length} Orang</p>
-            </div>
-            <div><p>Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}</p></div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>No</th><th>Nama Jamaah</th><th>NIK</th><th>L/P</th><th>No. Paspor</th><th>Status Paspor</th><th>Status Visa</th><th>No. HP</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${filteredManifest.map((m:any, i:number)=>`
-                <tr>
-                  <td>${i+1}</td>
-                  <td><b>${m.full_name}</b></td>
-                  <td>${m.nik}</td>
-                  <td>${m.gender}</td>
-                  <td>${m.passport_number || '-'}</td>
-                  <td>${m.passport_status || '-'}</td>
-                  <td>${m.visa_status || '-'}</td>
-                  <td>${m.phone}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </body>
-      </html>
-    `);
-    w.document.close();
-    w.print();
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Filters & Actions Header */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div>
-            <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Pilih Batch Keberangkatan</label>
-            <select value={batchId} onChange={e=>setBatchId(e.target.value)} className="border rounded-xl px-3 py-2 text-xs font-bold text-slate-900 bg-white">
-              <option value="">-- Semua Batch Keberangkatan --</option>
-              {batches.map((b:any)=>(<option key={b.id} value={b.id}>{b.batch_name} ({b.package_name})</option>))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Filter Dokumen</label>
-            <div className="flex gap-1">
-              {[
-                { id: 'ALL', label: `Semua (${manifest.length})` },
-                { id: 'NO_PASSPORT', label: `Belum Paspor (${missingPassportCount})` },
-                { id: 'NO_VISA', label: `Belum Visa (${missingVisaCount})` },
-              ].map(f=>(
-                <button
-                  key={f.id}
-                  onClick={()=>setDocFilter(f.id as any)}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold transition ${docFilter===f.id ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button onClick={printManifest} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl text-xs transition">
-            🖨️ Cetak / PDF
-          </button>
-          <button onClick={exportExcel} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow-xs">
-            📊 Export Excel
-          </button>
-        </div>
-      </div>
-
-      {/* Manifest Table */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
-              <th className="p-3">No</th>
-              <th className="p-3">Nama Jamaah</th>
-              <th className="p-3">NIK</th>
-              <th className="p-3">L/P</th>
-              <th className="p-3">No. Paspor</th>
-              <th className="p-3">Status Paspor</th>
-              <th className="p-3">Status Visa</th>
-              <th className="p-3">No. WhatsApp</th>
-              <th className="p-3">Batch / Paket</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredManifest.map((m:any, i:number)=>(
-              <tr key={m.id || i} className="hover:bg-slate-50 transition">
-                <td className="p-3 font-mono text-slate-400">{i+1}</td>
-                <td className="p-3 font-bold text-slate-900">{m.full_name}</td>
-                <td className="p-3 font-mono text-slate-600">{m.nik}</td>
-                <td className="p-3 text-slate-600">{m.gender}</td>
-                <td className="p-3 font-mono text-slate-600">{m.passport_number || '-'}</td>
-                <td className="p-3">
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${m.passport_status==='SUDAH'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
-                    {m.passport_status || 'BELUM'}
-                  </span>
-                </td>
-                <td className="p-3">
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${m.visa_status==='ISSUED'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
-                    {m.visa_status || 'PENDING'}
-                  </span>
-                </td>
-                <td className="p-3 font-mono text-slate-600">{m.phone}</td>
-                <td className="p-3 text-slate-600">{m.batch_name}</td>
-              </tr>
-            ))}
-            {filteredManifest.length===0 && (
-              <tr><td colSpan={9} className="text-center py-8 text-slate-400">Tidak ada data manifest yang sesuai dengan filter.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function LaporanTab({ isOwner }: { isOwner: boolean }) {
-  const [reports, setReports] = useState<any[]>([]);
-  const [summary, setSummary] = useState<any>(null);
-  const [batches, setBatches] = useState<any[]>([]);
-  const [period, setPeriod] = useState('ALL');
-  const [date, setDate] = useState('');
-  const [month, setMonth] = useState('');
-  const [year, setYear] = useState('');
-  const [batchId, setBatchId] = useState('');
-
-  const load = useCallback(() => {
-    let q = `?period=${period}`;
-    if (period==='DAILY' && date) q += `&date=${date}`;
-    if (period==='MONTHLY' && month) q += `&month=${month}`;
-    if (period==='YEARLY' && year) q += `&year=${year}`;
-    if (batchId) q += `&batch_id=${batchId}`;
-    fetch('/api/admin/reports' + q).then(r=>r.json()).then(d=>{
-      if(d.success){setReports(d.reports||[]);setSummary(d.summary);setBatches(d.batches||[]);}
-    });
-  }, [period, date, month, year, batchId]);
-  useEffect(()=>{load();},[load]);
-
-  const exportExcel = () => {
-    import('xlsx').then(XLSX => {
-      const data = reports.map((r:any,i:number)=>({'No':i+1,'Kode':r.booking_code,'Jamaah':r.full_name,'NIK':r.nik,'Paket':r.package_name,'Total':r.total_amount,'Dibayar':r.paid_amount,'Sisa':r.remaining_amount,'Status':r.payment_status,'Tanggal':r.transaction_date}));
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Laporan');
-      XLSX.writeFile(wb, 'laporan-keuangan.xlsx');
-    });
-  };
-
-  const printReport = () => {
-    const w = window.open('','','width=1100,height=700'); if(!w) return;
-    const rows = reports.map((r:any,i:number)=>`<tr><td>${i+1}</td><td>${r.booking_code}</td><td>${r.full_name}</td><td>${r.package_name}</td><td style="text-align:right">${fmtRp(r.total_amount)}</td><td style="text-align:right">${fmtRp(r.paid_amount)}</td><td style="text-align:right">${fmtRp(r.remaining_amount)}</td><td>${r.payment_status}</td></tr>`).join('');
-    w.document.write(`<html><head><title>Laporan</title><style>body{font-family:Arial;font-size:11px;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:4px 6px}th{background:#059669;color:#fff}</style></head><body>
-      <h2 style="text-align:center">LAPORAN KEUANGAN AL-BARAKAH TOUR</h2>
-      <p>Periode: ${period} | Transaksi: ${summary?.total_transactions||0} | Omset: ${fmtRp(summary?.total_revenue||0)} | Piutang: ${fmtRp(summary?.total_receivables||0)}</p>
-      <table><thead><tr><th>No</th><th>Kode</th><th>Jamaah</th><th>Paket</th><th>Total</th><th>Dibayar</th><th>Sisa</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
-    w.document.close(); w.print();
-  };
-
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-xl shadow p-4">
-        <div className="flex flex-wrap gap-3 items-end">
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Periode</label>
-          <select value={period} onChange={e=>setPeriod(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
-            <option value="ALL">Semua</option><option value="DAILY">Harian</option><option value="MONTHLY">Bulanan</option><option value="YEARLY">Tahunan</option>
-          </select></div>
-          {period==='DAILY' && <div><label className="block text-xs font-medium text-gray-600 mb-1">Tanggal</label><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="border rounded-lg px-3 py-2 text-sm"/></div>}
-          {period==='MONTHLY' && <div><label className="block text-xs font-medium text-gray-600 mb-1">Bulan</label><input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="border rounded-lg px-3 py-2 text-sm"/></div>}
-          {period==='YEARLY' && <div><label className="block text-xs font-medium text-gray-600 mb-1">Tahun</label><input type="number" inputMode="numeric" pattern="[0-9]*" value={year} onChange={e=>setYear(e.target.value)} placeholder="2026" className="border rounded-lg px-3 py-2 text-sm w-24 focus:ring-2 focus:ring-emerald-500 focus:outline-none"/></div>}
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Batch</label>
-          <select value={batchId} onChange={e=>setBatchId(e.target.value)} className="border rounded-lg px-3 py-2 text-sm"><option value="">Semua</option>{batches.map((b:any)=>(<option key={b.id} value={b.id}>{b.batch_name}</option>))}</select></div>
-          <button onClick={printReport} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"> Cetak</button>
-          <button onClick={exportExcel} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm"> Excel</button>
-        </div>
-      </div>
-      {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-4">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Transaksi</p>
-            <p className="text-2xl font-extrabold text-slate-900 mt-1">{summary.total_transactions} Trx</p>
-          </div>
-          {isOwner && (
-            <div className="bg-emerald-50/70 rounded-2xl shadow-xs border border-emerald-200 p-4">
-              <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Total Omset</p>
-              <p className="text-2xl font-extrabold text-emerald-800 mt-1">{fmtRp(summary.total_revenue)}</p>
-            </div>
-          )}
-          {isOwner && (
-            <div className="bg-rose-50/70 rounded-2xl shadow-xs border border-rose-200 p-4">
-              <p className="text-xs font-bold text-rose-700 uppercase tracking-wider">Total Piutang</p>
-              <p className="text-2xl font-extrabold text-rose-800 mt-1">{fmtRp(summary.total_receivables)}</p>
-            </div>
-          )}
-          <div className="bg-emerald-50/70 rounded-2xl shadow-xs border border-emerald-200 p-4">
-            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Lunas (PAID)</p>
-            <p className="text-2xl font-extrabold text-emerald-800 mt-1">{summary.paid_count}</p>
-          </div>
-          <div className="bg-amber-50/70 rounded-2xl shadow-xs border border-amber-200 p-4">
-            <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">DP / Pending</p>
-            <p className="text-2xl font-extrabold text-amber-800 mt-1">{summary.dp_count + summary.pending_count}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Visualisasi Grafik Tren Omset & Transaksi (Data Visualization Skill) */}
-      {reports.length > 0 && isOwner && (() => {
-        // Group reports by transaction month or date
-        const monthlyGroups: Record<string, { revenue: number; count: number }> = {};
-        reports.forEach((r: any) => {
-          const key = (r.transaction_date || '').substring(0, 7) || 'Umum';
-          if (!monthlyGroups[key]) monthlyGroups[key] = { revenue: 0, count: 0 };
-          monthlyGroups[key].revenue += Number(r.paid_amount) || 0;
-          monthlyGroups[key].count += 1;
-        });
-
-        const sortedKeys = Object.keys(monthlyGroups).sort();
-        const maxRev = Math.max(...sortedKeys.map(k => monthlyGroups[k].revenue), 1);
-
-        return (
-          <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-                  <span></span> Grafik Tren Pendapatan Terkumpul
-                </h4>
-                <p className="text-xs text-slate-500">Visualisasi uang masuk berdasarkan periode laporan yang dipilih.</p>
-              </div>
-            </div>
-
-            <div className="space-y-3 pt-2">
-              {sortedKeys.map(key => {
-                const item = monthlyGroups[key];
-                const pct = Math.round((item.revenue / maxRev) * 100);
-                return (
-                  <div key={key} className="space-y-1">
-                    <div className="flex justify-between text-xs font-semibold">
-                      <span className="text-slate-700 font-mono">{key} ({item.count} Transaksi)</span>
-                      <span className="text-emerald-700 font-bold">{fmtRp(item.revenue)}</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-3.5 overflow-hidden p-0.5 border border-slate-200">
-                      <div
-                        className="bg-gradient-to-r from-emerald-500 to-teal-600 h-full rounded-full transition-all duration-500"
-                        style={{ width: `${Math.max(pct, 4)}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="bg-gray-50 text-left">
-            <th className="p-3">Kode</th><th className="p-3">Jamaah</th><th className="p-3">Paket</th>
-            {isOwner && <th className="p-3">Total</th>}
-            {isOwner && <th className="p-3">Dibayar</th>}
-            {isOwner && <th className="p-3">Sisa</th>}
-            <th className="p-3">Status</th><th className="p-3">Tanggal</th>
-          </tr></thead>
-          <tbody>
-            {reports.map((r:any)=>(<tr key={r.transaction_id} className="border-b hover:bg-gray-50">
-              <td className="p-3 font-mono text-xs">{r.booking_code}</td><td className="p-3">{r.full_name}</td>
-              <td className="p-3 text-xs">{r.package_name}</td>
-              {isOwner && <td className="p-3">{fmtRp(r.total_amount)}</td>}
-              {isOwner && <td className="p-3 text-green-600">{fmtRp(r.paid_amount)}</td>}
-              {isOwner && <td className="p-3 text-red-600">{fmtRp(r.remaining_amount)}</td>}
-              <td className="p-3"><StatusBadge s={r.payment_status}/></td><td className="p-3 text-xs">{r.transaction_date}</td>
-            </tr>))}
-            {reports.length===0 && <tr><td colSpan={8} className="p-6 text-center text-gray-400">Tidak ada data</td></tr>}
-          </tbody>
-        </table></div>
-      </div>
-    </div>
-  );
-}
-
 
 /* ===================== KELOLA STAF TAB (OWNER only) ===================== */
 function KelolaStaf() {
@@ -2409,48 +1510,6 @@ function PembayaranTab() {
   );
 }
 
-function RegistrationsTab() {
-  const [list, setList] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(()=>{
-    fetch('/api/admin/registrations').then(r=>r.json()).then(d=>{ if(d.success) setList(d.registrations||[]); }).finally(()=>setLoading(false));
-  },[]);
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <div className="p-4 border-b"><h3 className="font-bold text-gray-800">Pendaftaran Online (semua booking)</h3>
-        <p className="text-xs text-gray-500">Termasuk pendaftaran mandiri dari halaman publik /register.</p></div>
-        <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="bg-gray-50 text-left">
-            <th className="p-3">Kode Booking</th><th className="p-3">Jemaah Utama</th><th className="p-3">NIK</th>
-            <th className="p-3">Paket / Batch</th><th className="p-3">Jemaah</th><th className="p-3">Total</th>
-            <th className="p-3">Dibayar</th><th className="p-3">Status</th><th className="p-3">Terdaftar</th>
-          </tr></thead>
-          <tbody>
-            {list.map((r:any)=>(
-              <tr key={r.id} className="border-b hover:bg-gray-50">
-                <td className="p-3 font-mono text-xs">{r.booking_code}</td>
-                <td className="p-3">{r.full_name}</td>
-                <td className="p-3 font-mono text-xs">{r.nik}</td>
-                <td className="p-3 text-xs">{r.package_name}<br/><span className="text-gray-500">{r.batch_name}</span></td>
-                <td className="p-3">{r.total_pilgrims} orang</td>
-                <td className="p-3">{fmtRp(r.total_amount)}</td>
-                <td className="p-3 text-green-600">{fmtRp(r.paid_amount)}</td>
-                <td className="p-3"><StatusBadge s={r.payment_status}/></td>
-                <td className="p-3 text-xs text-gray-500">{r.created_at}</td>
-              </tr>
-            ))}
-            {!loading && list.length===0 && <tr><td colSpan={9} className="p-6 text-center text-gray-400">Belum ada pendaftaran online</td></tr>}
-            {loading && <tr><td colSpan={9} className="p-6 text-center text-gray-400">Memuat...</td></tr>}
-          </tbody>
-        </table></div>
-      </div>
-    </div>
-  );
-}
-
 
 /* ===================== PENGATURAN PROFIL TRAVEL ===================== */
 function PengaturanTab() {
@@ -2727,487 +1786,12 @@ function PengaturanTab() {
   );
 }
 
-function ChecklistTab() {
-  const [jamaahList, setJamaahList] = useState<any[]>([]);
-  const [selectedJamaah, setSelectedJamaah] = useState<any>(null);
-  const [checklistData, setChecklistData] = useState<{ master: any[], items: any[] }>({ master: [], items: [] });
-  const [loading, setLoading] = useState(false);
-  const [savingId, setSavingId] = useState<number | null>(null);
-  const [searchFilter, setSearchFilter] = useState('');
-
-  useEffect(() => {
-    fetchJamaah();
-  }, []);
-
-  const fetchJamaah = async () => {
-    try {
-      const res = await fetch('/api/admin/jamaah');
-      const data = await res.json();
-      if (data.success) {
-        const list = data.jamaah || data.data || [];
-        setJamaahList(list);
-        if (list.length > 0) {
-          selectJamaah(list[0]);
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const selectJamaah = async (jamaah: any) => {
-    setSelectedJamaah(jamaah);
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/admin/checklist?jamaah_id=${jamaah.id}`);
-      const data = await res.json();
-      if (data.success) {
-        setChecklistData({ master: data.master || [], items: data.items || [] });
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const toggleStatus = async (item: any) => {
-    if (!selectedJamaah) return;
-    const currentStatus = item.status;
-    // Toggle cycle: BELUM -> SUDAH (atau DIAMBIL jika inventory linked) -> BELUM
-    let nextStatus = 'SUDAH';
-    if (item.is_inventory_linked) {
-      nextStatus = (currentStatus === 'BELUM') ? 'DIAMBIL' : 'BELUM';
-    } else {
-      nextStatus = (currentStatus === 'BELUM') ? 'SUDAH' : 'BELUM';
-    }
-
-    setSavingId(item.id);
-    try {
-      const res = await fetch('/api/admin/checklist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'UPDATE_STATUS',
-          jamaah_id: selectedJamaah.id,
-          checklist_master_id: item.id,
-          status: nextStatus
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        selectJamaah(selectedJamaah);
-      } else {
-        alert(data.message || 'Gagal memperbarui status');
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSavingId(null);
-    }
-  };
-
-  const filteredJamaah = jamaahList.filter((j: any) => 
-    j.full_name?.toLowerCase().includes(searchFilter.toLowerCase()) ||
-    j.passport_number?.toLowerCase().includes(searchFilter.toLowerCase()) ||
-    j.phone?.toLowerCase().includes(searchFilter.toLowerCase())
-  );
-
-  const categories = Array.from(new Set(checklistData.master.map((m: any) => m.category)));
-
-  // Calculate overall completeness percentage
-  const totalItems = checklistData.items.length;
-  const completedItems = checklistData.items.filter((i: any) => i.status === 'SUDAH' || i.status === 'DIAMBIL').length;
-  const progressPercent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
-
-  return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">Checklist Kelengkapan & Logistik Jamaah</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Centang item kelengkapan di bawah ini untuk memverifikasi dokumen dan menyerahkan perlengkapan. Penyerahan logistik otomatis memotong stok gudang.
-            </p>
-          </div>
-          {selectedJamaah && (
-            <div className="flex items-center gap-3 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200/60">
-              <div className="text-right">
-                <div className="text-xs font-semibold text-slate-500">Progress Kelengkapan</div>
-                <div className="text-sm font-bold text-slate-900">{completedItems} dari {totalItems} item ({progressPercent}%)</div>
-              </div>
-              <div className="w-12 h-12 rounded-full bg-emerald-50 border-2 border-emerald-500 flex items-center justify-center text-emerald-700 font-bold text-xs">
-                {progressPercent}%
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Jamaah Selector Sidebar */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm lg:col-span-1 flex flex-col h-[700px]">
-          <div className="mb-3">
-            <h3 className="text-sm font-semibold text-slate-800 mb-2">Pilih Jamaah ({filteredJamaah.length})</h3>
-            <input
-              type="text"
-              placeholder="Cari nama / paspor / no. HP..."
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-slate-900"
-            />
-          </div>
-          <div className="space-y-2 overflow-y-auto flex-1 pr-1">
-            {filteredJamaah.map((j: any) => (
-              <button
-                key={j.id}
-                onClick={() => selectJamaah(j)}
-                className={`w-full text-left p-3 rounded-xl border transition text-sm flex flex-col gap-1 ${selectedJamaah?.id === j.id ? 'border-slate-900 bg-slate-900 text-white font-medium shadow-sm' : 'border-slate-100 hover:bg-slate-50 text-slate-700'}`}
-              >
-                <div className="font-semibold truncate">{j.full_name}</div>
-                <div className={`text-xs flex items-center justify-between ${selectedJamaah?.id === j.id ? 'text-slate-300' : 'text-slate-400'}`}>
-                  <span>{j.passport_number || 'Paspor belum'}</span>
-                  <span>{j.phone || '-'}</span>
-                </div>
-              </button>
-            ))}
-            {filteredJamaah.length === 0 && (
-              <div className="py-12 text-center text-xs text-slate-400">Tidak ada jamaah ditemukan</div>
-            )}
-          </div>
-        </div>
-
-        {/* Interactive Checklist Detail Panel */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm lg:col-span-3">
-          {selectedJamaah ? (
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-4">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">{selectedJamaah.full_name}</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    NIK: {selectedJamaah.nik || '-'} | No. Paspor: <span className="font-medium text-slate-700">{selectedJamaah.passport_number || 'Belum diisi'}</span> | Telp: {selectedJamaah.phone || '-'}
-                  </p>
-                </div>
-                <span className="px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full border border-emerald-200 w-fit">
-                  Aktif / Terdaftar
-                </span>
-              </div>
-
-              {loading ? (
-                <div className="py-24 text-center text-slate-400 text-sm">Memuat data checklist jamaah...</div>
-              ) : (
-                <div className="space-y-6 max-h-[580px] overflow-y-auto pr-2">
-                  {categories.map((cat: any) => {
-                    const itemsInCat = checklistData.items.filter((i: any) => i.category === cat);
-                    return (
-                      <div key={cat} className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">{cat}</h4>
-                          <span className="text-[11px] text-slate-400">
-                            {itemsInCat.filter((i: any) => i.status === 'SUDAH' || i.status === 'DIAMBIL').length} / {itemsInCat.length} Selesai
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {itemsInCat.map((item: any) => {
-                            const isDone = item.status === 'SUDAH' || item.status === 'DIAMBIL';
-                            const isSaving = savingId === item.id;
-                            return (
-                              <div
-                                key={item.id}
-                                onClick={() => !isSaving && toggleStatus(item)}
-                                className={`p-4 rounded-xl border transition cursor-pointer flex items-start gap-3.5 select-none shadow-xs ${
-                                  isDone 
-                                    ? 'bg-emerald-50/40 border-emerald-300/80 hover:bg-emerald-50/70' 
-                                    : 'bg-white border-slate-200/80 hover:border-slate-300 hover:bg-slate-50/50'
-                                }`}
-                              >
-                                <div className="pt-0.5">
-                                  <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition ${
-                                    isDone ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 bg-white'
-                                  }`}>
-                                    {isDone && (
-                                      <svg className="w-3.5 h-3.5 stroke-[3]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                      </svg>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex-1">
-                                  <div className="flex items-center justify-between">
-                                    <span className={`text-sm font-semibold ${isDone ? 'text-emerald-900' : 'text-slate-800'}`}>
-                                      {item.item_name}
-                                    </span>
-                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                                      item.status === 'SUDAH' ? 'bg-emerald-100 text-emerald-800' :
-                                      item.status === 'DIAMBIL' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-500'
-                                    }`}>
-                                      {item.status}
-                                    </span>
-                                  </div>
-                                  <div className="text-xs text-slate-500 mt-1 flex items-center justify-between">
-                                    <span>{item.item_code}</span>
-                                    {item.is_inventory_linked && (
-                                      <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                                        📦 Potong Stok Gudang
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="py-24 text-center text-slate-400 text-sm">Pilih jamaah terlebih dahulu di sebelah kiri untuk melihat dan mencentang kelengkapan</div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
 
 /* ===================== JURNAL BUKU BESAR ===================== */
-function LedgerTab() {
-  const [ledger, setLedger] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    fetch('/api/admin/financial', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'GET_LEDGER' })
-    }).then(r => r.json()).then(d => {
-      if (d.success) setLedger(d.ledger || []);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
-
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
-      <h3 className="text-base font-black text-slate-900">Jurnal Buku Besar (General Ledger)</h3>
-      {loading ? <p className="text-center text-slate-400 py-8">Memuat...</p> : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
-                <th className="p-3">Tanggal</th>
-                <th className="p-3">Kode Akun</th>
-                <th className="p-3">Nama Akun</th>
-                <th className="p-3">Keterangan</th>
-                <th className="p-3 text-right">Debit (Rp)</th>
-                <th className="p-3 text-right">Kredit (Rp)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {ledger.map((l:any)=>(
-                <tr key={l.id} className="hover:bg-slate-50 transition">
-                  <td className="p-3 font-mono text-slate-500">{l.entry_date}</td>
-                  <td className="p-3 font-mono font-bold text-slate-700">{l.coa_code}</td>
-                  <td className="p-3 font-bold text-slate-900">{l.coa_name}</td>
-                  <td className="p-3 text-slate-600">{l.description}</td>
-                  <td className="p-3 text-right font-mono font-bold text-emerald-600">
-                    {l.entry_type === 'DEBIT' ? fmtRp(l.amount) : '-'}
-                  </td>
-                  <td className="p-3 text-right font-mono font-bold text-rose-600">
-                    {l.entry_type === 'CREDIT' ? fmtRp(l.amount) : '-'}
-                  </td>
-                </tr>
-              ))}
-              {ledger.length === 0 && (
-                <tr><td colSpan={6} className="text-center py-8 text-slate-400">Belum ada entri buku besar.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
 
 /* ===================== MUTASI STOK GUDANG ===================== */
-function StockLedgerTab() {
-  const [handovers, setHandovers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    fetch('/api/admin/inventory/ledger').then(r => r.json()).then(d => {
-      if (d.success) setHandovers(d.handovers || d.data || []);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
-
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
-      <h3 className="text-base font-black text-slate-900">Mutasi Stok Gudang & Penyerahan Perlengkapan</h3>
-      {loading ? <p className="text-center text-slate-400 py-8">Memuat...</p> : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
-                <th className="p-3">Tanggal</th>
-                <th className="p-3">Nama Jamaah</th>
-                <th className="p-3">Nama Barang</th>
-                <th className="p-3 text-center">Jumlah Keluar</th>
-                <th className="p-3">Catatan</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {handovers.map((h:any)=>(
-                <tr key={h.id} className="hover:bg-slate-50 transition">
-                  <td className="p-3 font-mono text-slate-500">{h.handover_date || h.created_at}</td>
-                  <td className="p-3 font-bold text-slate-900">{h.full_name || h.jamaah_name}</td>
-                  <td className="p-3 font-bold text-slate-700">{h.item_name || h.name}</td>
-                  <td className="p-3 text-center font-mono font-bold text-rose-600">-{h.quantity || h.qty}</td>
-                  <td className="p-3 text-slate-600">{h.notes || '-'}</td>
-                </tr>
-              ))}
-              {handovers.length === 0 && (
-                <tr><td colSpan={5} className="text-center py-8 text-slate-400">Belum ada mutasi stok gudang.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
 
 /* ===================== JURNAL UMUM TAB ===================== */
-function GeneralJournalTab() {
-  const [journals, setJournals] = useState<any[]>([]);
-  const [coaList, setCoaList] = useState<any[]>([]);
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ journal_date: hariIniWib(), debit_coa_id: '', credit_coa_id: '', amount: '', description: '' });
-
-  const loadData = () => {
-    fetch('/api/admin/financial?period=ALL').then(r => r.json()).then(d => {
-      if (d.success) {
-        setJournals(d.generalJournals || []);
-        setCoaList(d.coaList || []);
-      }
-    });
-  };
-
-  useEffect(() => { loadData(); }, []);
-
-  const saveJournal = () => {
-    if (!form.debit_coa_id || !form.credit_coa_id || !form.amount) {
-      alert('Semua field wajib diisi!');
-      return;
-    }
-    fetch('/api/admin/financial', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'CREATE_GENERAL_JOURNAL', ...form })
-    }).then(r => r.json()).then(d => {
-      if (d.success) {
-        alert('Jurnal umum berhasil disimpan!');
-        setShowModal(false);
-        setForm({ journal_date: hariIniWib(), debit_coa_id: '', credit_coa_id: '', amount: '', description: '' });
-        loadData();
-      } else {
-        alert(d.message || 'Gagal menyimpan jurnal');
-      }
-    });
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div>
-          <h3 className="text-base font-black text-slate-900">Jurnal Umum (Memorial)</h3>
-          <p className="text-xs text-slate-500">Pencatatan transaksi akuntansi berpasangan (Double-Entry).</p>
-        </div>
-        <button onClick={() => setShowModal(true)} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition">+ Buat Jurnal Baru</button>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
-              <th className="p-3">Tanggal</th>
-              <th className="p-3">Debit (Akun)</th>
-              <th className="p-3">Kredit (Akun)</th>
-              <th className="p-3 text-right">Jumlah (Rp)</th>
-              <th className="p-3">Keterangan</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {journals.map((j:any)=>(
-              <tr key={j.id} className="hover:bg-slate-50 transition">
-                <td className="p-3 font-mono text-slate-500">{j.journal_date}</td>
-                <td className="p-3 font-bold text-slate-900">{j.debit_code} - {j.debit_name}</td>
-                <td className="p-3 font-bold text-slate-900">{j.credit_code} - {j.credit_name}</td>
-                <td className="p-3 text-right font-mono font-bold text-emerald-600">{fmtRp(j.amount)}</td>
-                <td className="p-3 text-slate-600">{j.description}</td>
-              </tr>
-            ))}
-            {journals.length === 0 && (
-              <tr><td colSpan={5} className="text-center py-8 text-slate-400">Belum ada jurnal umum.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {showModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="text-base font-black text-slate-900">Form Jurnal Umum (Memorial)</h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-sm">✕</button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Tanggal *</label>
-                <input type="date" value={form.journal_date} onChange={e=>setForm({...form, journal_date:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Akun Debit *</label>
-                <select value={form.debit_coa_id} onChange={e=>setForm({...form, debit_coa_id:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
-                  <option value="">-- Pilih Akun Debit --</option>
-                  {coaList.map((c:any)=>(<option key={c.id} value={c.id}>[{c.coa_code}] {c.coa_name}</option>))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Akun Kredit *</label>
-                <select value={form.credit_coa_id} onChange={e=>setForm({...form, credit_coa_id:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs">
-                  <option value="">-- Pilih Akun Kredit --</option>
-                  {coaList.map((c:any)=>(<option key={c.id} value={c.id}>[{c.coa_code}] {c.coa_name}</option>))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Jumlah (Rp) *</label>
-                <input type="number" inputMode="numeric" value={form.amount} onChange={e=>setForm({...form, amount:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs font-mono" placeholder="0" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Keterangan / Deskripsi</label>
-                <input value={form.description} onChange={e=>setForm({...form, description:e.target.value})} className="w-full border rounded-xl px-3 py-2 text-xs" placeholder="Keterangan transaksi..." />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-              <button onClick={() => setShowModal(false)} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
-              <button onClick={saveJournal} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-bold">Simpan Jurnal</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
 
 /* ===================== BEBAN OPERASIONAL TAB ===================== */
 function ExpensesTab() {

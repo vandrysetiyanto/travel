@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { galatServer } from '@/lib/galat';
 import db from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { mapPayment } from '@/lib/booking';
@@ -42,6 +43,6 @@ export async function GET(req: Request) {
       payments: rows.map(mapPayment),
     });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'payments' });
   }
 }

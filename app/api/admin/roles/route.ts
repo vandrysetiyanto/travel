@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { galatServer } from '@/lib/galat';
 import db, { initDB } from '@/lib/db';
 import { requirePermission, catatAudit, permissionsOf } from '@/lib/permissions';
 import { menuTambahanRole } from '@/lib/role-menus';
@@ -73,7 +74,7 @@ export async function GET(req: Request) {
       izinSaya: permissionsOf(String(auth.user?.role || '')),
     });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'admin/roles' });
   }
 }
 
@@ -284,6 +285,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: false, message: 'Action tidak valid' }, { status: 400 });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'admin/roles' });
   }
 }

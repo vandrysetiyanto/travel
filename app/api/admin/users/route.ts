@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { galatServer } from '@/lib/galat';
 import bcrypt from 'bcryptjs';
 import db, { initDB } from '@/lib/db';
 import { requirePermission, catatAudit } from '@/lib/permissions';
@@ -35,7 +36,7 @@ export async function GET(req: Request) {
     const roles = db.prepare('SELECT code, name, is_system FROM roles ORDER BY is_system DESC, name ASC').all();
     return NextResponse.json({ success: true, users, roles });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'admin/users' });
   }
 }
 
@@ -164,6 +165,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: false, message: 'Action tidak valid' }, { status: 400 });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return galatServer(error, { bagian: 'admin/users' });
   }
 }
