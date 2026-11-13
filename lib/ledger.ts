@@ -12,6 +12,12 @@ export type SumberLedger = {
   expenseId?: number | null;
   journalId?: number | null;
   paymentId?: number | null;
+  /**
+   * Kloter (cost center) tempat biaya ini dibebankan. Opsional: baris lama
+   * tetap NULL. Bila tidak diisi padahal ada transactionId, nilainya diambil
+   * otomatis dari transaksi tersebut.
+   */
+  batchId?: number | null;
 };
 
 /** Sanitasi id: hanya angka > 0 yang disimpan, sisanya NULL (bukan 0 atau string). */
@@ -35,8 +41,8 @@ export function tulisLedger(
   const info = db
     .prepare(`
       INSERT INTO ledger (entry_date, coa_account_id, entry_type, amount, description, reference,
-                          transaction_id, expense_id, journal_id, payment_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          transaction_id, expense_id, journal_id, payment_id, batch_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       baris.entryDate,
@@ -49,8 +55,29 @@ export function tulisLedger(
       idAtauNull(sumber.expenseId),
       idAtauNull(sumber.journalId),
       idAtauNull(sumber.paymentId),
+      idAtauNull(sumber.batchId) ?? batchDariTransaksi(sumber.transactionId),
     );
   return Number(info.lastInsertRowid);
+}
+
+/**
+ * Ambil batch_id dari transaksi bila pemanggil tidak menyebutkannya.
+ *
+ * Dipakai agar setiap jurnal yang lahir dari transaksi booking otomatis
+ * teratribusi ke kloter — tanpa memaksa setiap pemanggil mengisi manual
+ * (kalau manual, cepat atau lambat ada yang terlewat).
+ */
+function batchDariTransaksi(transactionId: unknown): number | null {
+  const id = idAtauNull(transactionId);
+  if (!id) return null;
+  try {
+    const row = db.prepare('SELECT batch_id FROM transactions WHERE id = ?').get(id) as
+      | { batch_id: number | null }
+      | undefined;
+    return idAtauNull(row?.batch_id);
+  } catch {
+    return null;
+  }
 }
 
 /** Akun kas default ('1-101') — satu tempat, supaya tidak di-hardcode di banyak route. */

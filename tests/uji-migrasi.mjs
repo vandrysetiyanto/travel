@@ -36,14 +36,21 @@ cek('migrasi 1 tercatat (dijalankan atau sudah ada)', sudahAda === 1, `catatan=$
 
 console.log('\n[3] Tabel schema_migrations terbentuk');
 const baris = db.prepare('SELECT nomor, nama FROM schema_migrations ORDER BY nomor').all();
-cek('ada catatan migrasi', baris.length === 1, JSON.stringify(baris));
-cek('nama migrasi tersimpan', baris[0]?.nama === 'baseline-skema-awal');
+/*
+ * Jumlah migrasi akan terus bertambah. Uji tidak boleh mengunci angka 1:
+ * yang penting setiap migrasi punya catatan, dan migrasi 1 ada.
+ */
+cek('setiap migrasi punya catatan', baris.length >= 1, JSON.stringify(baris));
+cek('migrasi 1 (baseline) tercatat', baris.some((b) => b.nomor === 1 && b.nama === 'baseline-skema-awal'), JSON.stringify(baris));
 
 console.log('\n[4] Jalankan ulang -> tidak mengulang migrasi');
 const h2 = jalankanMigrasi(db);
 cek('tidak ada migrasi dijalankan lagi', h2.dijalankan.length === 0, h2.dijalankan.join(','));
-cek('versi tetap 1', h2.ke === 1, String(h2.ke));
-cek('catatan tidak dobel', db.prepare('SELECT COUNT(*) c FROM schema_migrations').get().c === 1);
+const VERSI_KINI = h2.ke;
+cek('versi tidak berubah setelah dijalankan ulang', h2.ke === VERSI_KINI, String(h2.ke));
+const jmlCatatan = db.prepare('SELECT COUNT(*) c FROM schema_migrations').get().c;
+const jmlUnik = db.prepare('SELECT COUNT(DISTINCT nomor) c FROM schema_migrations').get().c;
+cek('catatan tidak dobel', jmlCatatan === jmlUnik, `${jmlCatatan} baris, ${jmlUnik} nomor unik`);
 
 console.log('\n[5] Struktur tabel tetap utuh setelah migrasi');
 /*
@@ -64,8 +71,9 @@ MIGRATIONS.push({ nomor: 99, nama: 'uji-sengaja-gagal', jalankan: () => { throw 
 let melempar = false;
 try { jalankanMigrasi(db); } catch { melempar = true; }
 cek('error migrasi diteruskan', melempar);
-cek('versi TIDAK naik ke 99', versiSkema(db) === 1, String(versiSkema(db)));
+cek('versi TIDAK naik ke 99', versiSkema(db) !== 99, String(versiSkema(db)));
 cek('migrasi gagal tidak tercatat', db.prepare('SELECT COUNT(*) c FROM schema_migrations WHERE nomor=99').get().c === 0);
+cek('versi tetap pada migrasi terakhir yang sukses', versiSkema(db) === VERSI_KINI, String(versiSkema(db)));
 
 db.close();
 for (const s of ['', '-wal', '-shm']) if (fs.existsSync(UJI + s)) fs.unlinkSync(UJI + s);

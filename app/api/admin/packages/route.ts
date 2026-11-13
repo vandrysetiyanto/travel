@@ -11,7 +11,16 @@ export async function GET(request: Request) {
   if (!auth.ok) return auth.response;
 
   try {
-    const packages = db.prepare('SELECT * FROM packages ORDER BY created_at DESC').all();
+    const packages = db.prepare('SELECT * FROM packages ORDER BY created_at DESC').all() as any[];
+
+    /*
+     * Itinerary per paket ikut dikirim agar UI tidak perlu request tambahan.
+     * Dikelompokkan per package_id; paket tanpa itinerary mendapat array kosong.
+     */
+    const itin = db.prepare('SELECT * FROM package_itinerary ORDER BY package_id, hari').all() as any[];
+    const perPaket: Record<number, any[]> = {};
+    for (const it of itin) (perPaket[Number(it.package_id)] ||= []).push(it);
+    for (const p of packages) p.itinerary = perPaket[Number(p.id)] || [];
     const batches = db.prepare(`
       SELECT b.*, p.name as package_name, p.category, p.price as default_price, p.hotel_makkah, p.hotel_madinah, p.airline
       FROM batches b
@@ -151,6 +160,158 @@ export async function POST(req: Request) {
       db.prepare('DELETE FROM batches WHERE id = ?').run(id);
       catatAudit({ user: auth.user, action: 'DELETE', module: 'batch', recordId: id });
       return NextResponse.json({ success: true, message: 'Batch berhasil dihapus' });
+    }
+
+
+    /* ── ITINERARY PER PAKET ─────────────────────────────────────────────
+     * Program harian dipakai untuk brosur dan menjadi dasar penyesuaian
+     * jadwal hotel/katering saat terjadi reschedule.
+     */
+    if (action === 'SAVE_ITINERARY') {
+      { const cek = await requirePermission(req, 'paket.update'); if (!cek.ok) return cek.response; }
+      const { package_id, itinerary } = body;
+      const paketId = Number(package_id);
+      if (!paketId) {
+        return NextResponse.json({ success: false, message: 'ID paket wajib dikirim.' }, { status: 400 });
+      }
+      const paket = db.prepare('SELECT id, name FROM packages WHERE id = ?').get(paketId) as any;
+      if (!paket) {
+        return NextResponse.json({ success: false, message: 'Paket tidak ditemukan.' }, { status: 404 });
+      }
+      if (!Array.isArray(itinerary)) {
+        return NextResponse.json({ success: false, message: 'Itinerary harus berupa daftar.' }, { status: 400 });
+      }
+
+      // Validasi tiap baris sebelum menyimpan apa pun
+      const bersih: { hari: number; judul: string; kegiatan: string; kota: string; hotel: string; makan: string }[] = [];
+      const hariTerpakai = new Set<number>();
+      // Array.from dipakai karena target TS proyek belum mendukung iterasi Map/iterator langsung.
+      const daftarBaris = Array.from(itinerary as any[]).map((row, i) => ({ i, row }));
+      for (const { i, row } of daftarBaris) {
+        const hari = Number(row?.hari);
+        const judul = String(row?.judul || '').trim();
+        if (!Number.isInteger(hari) || hari < 1 || hari > 60) {
+          return NextResponse.json({ success: false, message: `Baris ${i + 1}: hari harus angka 1–60.` }, { status: 400 });
+        }
+        if (hariTerpakai.has(hari)) {
+          return NextResponse.json({ success: false, message: `Hari ${hari} muncul lebih dari sekali.` }, { status: 400 });
+        }
+        if (!judul) {
+          return NextResponse.json({ success: false, message: `Baris ${i + 1}: judul kegiatan wajib diisi.` }, { status: 400 });
+        }
+        hariTerpakai.add(hari);
+        bersih.push({
+          hari,
+          judul,
+          kegiatan: String(row?.kegiatan || ''),
+          kota: String(row?.kota || ''),
+          hotel: String(row?.hotel || ''),
+          makan: String(row?.makan || ''),
+        });
+      }
+
+      const simpan = db.transaction(() => {
+        db.prepare('DELETE FROM package_itinerary WHERE package_id = ?').run(paketId);
+        const ins = db.prepare(`INSERT INTO package_itinerary (package_id, hari, judul, kegiatan, kota, hotel, makan)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)`);
+        for (const b of bersih) ins.run(paketId, b.hari, b.judul, b.kegiatan, b.kota, b.hotel, b.makan);
+      });
+      simpan();
+
+      catatAudit({
+        user: auth.user, action: 'UPDATE', module: 'itinerary', recordId: paketId,
+        after: { paket: paket.name, jumlah_hari: bersih.length },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Itinerary ${paket.name} disimpan (${bersih.length} hari).`,
+        jumlah_hari: bersih.length,
+      });
+    }
+
+    if (action === 'DELETE_ITINERARY') {
+      { const cek = await requirePermission(req, 'paket.update'); if (!cek.ok) return cek.response; }
+      const paketId = Number(body.package_id);
+      if (!paketId) {
+        return NextResponse.json({ success: false, message: 'ID paket wajib dikirim.' }, { status: 400 });
+      }
+      const hapus = db.prepare('DELETE FROM package_itinerary WHERE package_id = ?').run(paketId);
+      catatAudit({ user: auth.user, action: 'DELETE', module: 'itinerary', recordId: paketId });
+      return NextResponse.json({ success: true, message: `Itinerary dihapus (${hapus.changes} baris).` });
+    }
+
+
+    /* ── RESCHEDULE KLOTER (perubahan jadwal mendadak) ────────────────────
+     * Maskapai mengubah tanggal/rute secara tiba-tiba. Aksi ini:
+     *   - mengubah tanggal kloter sekaligus (bukan satu per satu)
+     *   - mengembalikan DAFTAR JAMAAH TERDAMPAK agar bisa dihubungi
+     *   - menolak tanggal yang tidak masuk akal (pulang sebelum berangkat)
+     *   - mencatat sebelum/sesudah ke audit
+     * Tidak menyentuh uang: perubahan jadwal bukan transaksi keuangan.
+     */
+    if (action === 'RESCHEDULE_BATCH') {
+      { const cek = await requirePermission(req, 'paket.update'); if (!cek.ok) return cek.response; }
+      const { batch_id, departure_date, return_date, catatan } = body;
+
+      const id = Number(batch_id);
+      const berangkat = String(departure_date || '').slice(0, 10);
+      const pulang = String(return_date || '').slice(0, 10);
+
+      if (!id) {
+        return NextResponse.json({ success: false, message: 'ID kloter wajib dikirim.' }, { status: 400 });
+      }
+      const tglSah = (t: string) => /^\d{4}-\d{2}-\d{2}$/.test(t) && !Number.isNaN(new Date(`${t}T00:00:00+07:00`).getTime());
+      if (!tglSah(berangkat) || !tglSah(pulang)) {
+        return NextResponse.json({ success: false, message: 'Tanggal berangkat & pulang wajib berformat YYYY-MM-DD.' }, { status: 400 });
+      }
+      if (pulang < berangkat) {
+        return NextResponse.json({ success: false, message: 'Tanggal pulang tidak boleh sebelum tanggal berangkat.' }, { status: 400 });
+      }
+
+      const batch = db.prepare('SELECT * FROM batches WHERE id = ?').get(id) as any;
+      if (!batch) {
+        return NextResponse.json({ success: false, message: 'Kloter tidak ditemukan.' }, { status: 404 });
+      }
+
+      // Jamaah terdampak: yang masih aktif di kloter ini
+      const terdampak = db.prepare(`
+        SELECT t.id AS transaction_id, t.booking_code, t.status,
+               j.id AS jamaah_id, j.full_name, j.phone
+          FROM transactions t
+          JOIN master_jamaah j ON j.id = t.jamaah_id
+         WHERE t.batch_id = ? AND t.status <> 'CANCELLED'
+         ORDER BY j.full_name
+      `).all(id) as any[];
+
+      const durasiLama = Math.round(
+        (new Date(batch.return_date).getTime() - new Date(batch.departure_date).getTime()) / 86400000,
+      );
+      const durasiBaru = Math.round((new Date(pulang).getTime() - new Date(berangkat).getTime()) / 86400000);
+
+      db.prepare('UPDATE batches SET departure_date = ?, return_date = ? WHERE id = ?')
+        .run(berangkat, pulang, id);
+
+      catatAudit({
+        user: auth.user,
+        action: 'UPDATE',
+        module: 'batch_reschedule',
+        recordId: id,
+        before: { berangkat: batch.departure_date, pulang: batch.return_date },
+        after: { berangkat, pulang, catatan: catatan || '' },
+        notes: `${terdampak.length} jamaah terdampak`,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message:
+          `Jadwal ${batch.batch_name} diperbarui: ${batch.departure_date} → ${berangkat}, ` +
+          `${batch.return_date} → ${pulang}. ${terdampak.length} jamaah perlu diberi tahu.`,
+        batch: { id, nama: batch.batch_name, berangkat, pulang },
+        durasi: { lama_hari: durasiLama, baru_hari: durasiBaru, selisih_hari: durasiBaru - durasiLama },
+        jamaah_terdampak: terdampak,
+        jumlah_terdampak: terdampak.length,
+      });
     }
 
     return NextResponse.json({ success: false, message: 'Action tidak dikenali' }, { status: 400 });

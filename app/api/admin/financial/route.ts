@@ -5,6 +5,7 @@ import { requireAdmin } from '@/lib/auth';
 import { requirePermission, catatAudit } from '@/lib/permissions';
 import { tulisLedger, akunKasDefault } from '@/lib/ledger';
 import { labaRugi, neraca, arusKas } from '@/lib/laporan';
+import { labaRugiPerKloter } from '@/lib/laporan-kloter';
 import { validasiNominal, validasiJurnal } from '@/lib/uang';
 import { tanggalWib, tanggalValid, keTanggalWib } from '@/lib/waktu';
 
@@ -83,6 +84,8 @@ export async function GET(request: Request) {
       },
       neraca: nc,
       arus_kas: ak,
+      // Laba-rugi per kloter (cost center) — kini mungkin karena ledger punya batch_id.
+      per_kloter: labaRugiPerKloter(db),
     });
   } catch (error: any) {
     return galatServer(error, { bagian: 'admin/financial' });
@@ -169,7 +172,7 @@ export async function POST(request: Request) {
 
     if (action === 'ADD_EXPENSE') {
       { const cek = await requirePermission(request, 'expense.manage'); if (!cek.ok) return cek.response; }
-      const { coa_account_id, amount, description, expense_date } = body;
+      const { coa_account_id, amount, description, expense_date, batch_id } = body;
       if (!coa_account_id) {
         return NextResponse.json({ success: false, message: 'Akun beban wajib dipilih' }, { status: 400 });
       }
@@ -214,10 +217,15 @@ export async function POST(request: Request) {
        * menghapus beban tidak pernah menghapus jurnalnya (ledger yatim).
        */
       const info = db.transaction(() => {
+        /*
+         * batch_id = cost center (kloter). Opsional, tetapi bila diisi maka beban
+         * ini bisa dihitung dalam HPP keberangkatan tertentu.
+         */
+        const batchId = Number(batch_id) > 0 ? Number(batch_id) : null;
         const res = db.prepare(`
-          INSERT INTO expenses (coa_account_id, amount, description, expense_date, created_by)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(coa_account_id, amount, description || '', tgl, auth.user?.email || 'Admin');
+          INSERT INTO expenses (coa_account_id, amount, description, expense_date, created_by, batch_id)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(coa_account_id, cekNominal.nilai, description || '', tgl, auth.user?.email || 'Admin', batchId);
         const expenseId = Number(res.lastInsertRowid);
 
         /*
@@ -229,7 +237,7 @@ export async function POST(request: Request) {
          *   - total debit dan kredit di buku besar tidak seimbang
          */
         tulisLedger(
-          { expenseId },
+          { expenseId, batchId },
           {
             coaAccountId: Number(coa_account_id),
             entryType: 'DEBIT',
@@ -241,7 +249,7 @@ export async function POST(request: Request) {
 
         const kas = akunKasDefault();
         tulisLedger(
-          { expenseId },
+          { expenseId, batchId },
           {
             coaAccountId: kas ?? Number(coa_account_id),
             entryType: 'CREDIT',
@@ -297,7 +305,7 @@ export async function POST(request: Request) {
 
     if (action === 'ADD_JOURNAL') {
       { const cek = await requirePermission(request, 'journal.create'); if (!cek.ok) return cek.response; }
-      const { journal_date, reference_no, description, debit_coa_id, credit_coa_id, amount } = body;
+      const { journal_date, reference_no, description, debit_coa_id, credit_coa_id, amount, batch_id } = body;
       if (!journal_date) {
         return NextResponse.json({ success: false, message: 'Tanggal jurnal wajib diisi' }, { status: 400 });
       }
@@ -328,17 +336,19 @@ export async function POST(request: Request) {
        */
       const hasil = db.transaction(() => {
         const res = db.prepare(`
-          INSERT INTO general_journals (journal_date, reference_no, description, debit_coa_id, credit_coa_id, amount)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(journal_date, refNo, description || 'Jurnal Umum', debit_coa_id, credit_coa_id, amount);
+          INSERT INTO general_journals (journal_date, reference_no, description, debit_coa_id, credit_coa_id, amount, batch_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(journal_date, refNo, description || 'Jurnal Umum', debit_coa_id, credit_coa_id, cekJurnal.nilai,
+               Number(batch_id) > 0 ? Number(batch_id) : null);
         const journalId = Number(res.lastInsertRowid);
 
+        const batchJurnal = Number(batch_id) > 0 ? Number(batch_id) : null;
         tulisLedger(
-          { journalId },
+          { journalId, batchId: batchJurnal },
           { coaAccountId: cekJurnal.debit, entryType: 'DEBIT', amount: cekJurnal.nilai, description: description || 'Jurnal Umum', entryDate: journal_date, reference: refNo },
         );
         tulisLedger(
-          { journalId },
+          { journalId, batchId: batchJurnal },
           { coaAccountId: cekJurnal.kredit, entryType: 'CREDIT', amount: cekJurnal.nilai, description: description || 'Jurnal Umum', entryDate: journal_date, reference: refNo },
         );
 

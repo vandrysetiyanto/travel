@@ -42,6 +42,81 @@ export const MIGRATIONS: Migrasi[] = [
        */
     },
   },
+  {
+    nomor: 2,
+    nama: 'cost-center-batch-id',
+    jalankan: (db) => {
+      /*
+       * Menambahkan kolom `batch_id` agar setiap baris biaya/pendapatan bisa
+       * ditelusuri ke kloter keberangkatan tertentu (cost center).
+       *
+       * Tanpa ini, laporan per paket hanya bisa menebak dari transaksi, dan
+       * beban operasional (hotel, tiket, katering) tidak punya kloter sama
+       * sekali — margin per keberangkatan tidak bisa dihitung.
+       *
+       * Aditif & idempoten: kolom nullable, tidak mengubah data lama.
+       */
+      const adaKolom = (tabel: string, kolom: string) =>
+        (db.prepare(`PRAGMA table_info(${tabel})`).all() as { name: string }[]).some((c) => c.name === kolom);
+
+      if (!adaKolom('ledger', 'batch_id')) {
+        db.exec('ALTER TABLE ledger ADD COLUMN batch_id INTEGER REFERENCES batches(id)');
+      }
+      if (!adaKolom('expenses', 'batch_id')) {
+        db.exec('ALTER TABLE expenses ADD COLUMN batch_id INTEGER REFERENCES batches(id)');
+      }
+      if (!adaKolom('general_journals', 'batch_id')) {
+        db.exec('ALTER TABLE general_journals ADD COLUMN batch_id INTEGER REFERENCES batches(id)');
+      }
+
+      // Indeks: laporan per kloter memindai kolom ini terus-menerus.
+      db.exec('CREATE INDEX IF NOT EXISTS idx_ledger_batch    ON ledger(batch_id)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_expenses_batch  ON expenses(batch_id)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_journals_batch  ON general_journals(batch_id)');
+
+      /*
+       * Backfill: baris lama yang lahir dari transaksi booking diberi kloter
+       * sesuai transaksinya. Hanya mengisi yang masih NULL, jadi aman diulang
+       * dan tidak menimpa penetapan manual.
+       */
+      db.exec(`
+        UPDATE ledger
+           SET batch_id = (SELECT t.batch_id FROM transactions t WHERE t.id = ledger.transaction_id)
+         WHERE batch_id IS NULL
+           AND transaction_id IS NOT NULL
+           AND EXISTS (SELECT 1 FROM transactions t WHERE t.id = ledger.transaction_id);
+      `);
+    },
+  },
+  {
+    nomor: 3,
+    nama: 'itinerary-paket',
+    jalankan: (db) => {
+      /*
+       * Program harian (itinerary) per paket.
+       *
+       * Dibutuhkan skenario "Reschedule / Reroute": tanpa daftar kegiatan per
+       * hari, penyesuaian check-in/check-out hotel dan porsi katering tidak
+       * punya dasar hitung. Selain itu itinerary dipakai untuk brosur & manifest.
+       */
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS package_itinerary (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          package_id INTEGER NOT NULL,
+          hari INTEGER NOT NULL,
+          judul TEXT NOT NULL,
+          kegiatan TEXT,
+          kota TEXT,
+          hotel TEXT,
+          makan TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (package_id) REFERENCES packages(id) ON DELETE CASCADE,
+          UNIQUE(package_id, hari)
+        );
+      `);
+      db.exec('CREATE INDEX IF NOT EXISTS idx_itinerary_paket ON package_itinerary(package_id, hari)');
+    },
+  },
 ];
 
 export type HasilMigrasi = {
