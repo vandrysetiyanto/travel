@@ -42,3 +42,20 @@ yarn-error.log*
 /tmp/
 # artefak skill agent di dalam folder data
 /data/skills/
+
+# ── Penjagaan eksplisit: JANGAN pernah commit database & artefak runtime ──
+# File SQLite berisi data pribadi jamaah (NIK, paspor, alamat) — UU PDP.
+# Pola di bawah menjaga walau folder atau nama file berubah.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+/data/*
+!/data/.gitkeep
+
+# Artefak uji & runtime
+/tmp/
+/coverage/
+/.next-*/
