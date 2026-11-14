@@ -113,8 +113,28 @@ export async function POST(request: Request) {
     const {
       nik, no_kk, full_name, gender, birth_place, birth_date,
       phone, email, address, passport_number, passport_expiry,
-      passport_status, marriage_doc_status, visa_status, notes
+      passport_status, marriage_doc_status, visa_status, notes,
+      // Field manifest bandara (IATA/APIS) + operasional lapangan.
+      nationality, passport_country, passport_issue_date, emergency_contact, medical_notes,
     } = body;
+
+    /*
+     * Dua nama untuk hal yang sama: form UI mengirim `passport_expiry_date`,
+     * sedangkan API lama memakai `passport_expiry`. Terima keduanya agar data
+     * tidak hilang hanya karena perbedaan nama field.
+     */
+    const kedaluwarsa = body.passport_expiry_date ?? passport_expiry ?? null;
+    /*
+     * Jenis kelamin: UI mengirim 'L'/'P' tetapi bisa juga 'LAKI-LAKI'.
+
+     */
+    const jk = (() => {
+      const v = String(gender || '').trim().toUpperCase();
+      if (!v) return null;
+      if (v.startsWith('L')) return 'L';
+      if (v.startsWith('P') || v.startsWith('W')) return 'P';
+      return v;
+    })();
 
     if (!nik || !full_name) {
       return NextResponse.json({ success: false, message: 'NIK dan Nama Lengkap wajib diisi' }, { status: 400 });
@@ -128,13 +148,23 @@ export async function POST(request: Request) {
           gender = COALESCE(?, gender), birth_place = COALESCE(?, birth_place),
           birth_date = COALESCE(?, birth_date), phone = COALESCE(?, phone),
           email = COALESCE(?, email), address = COALESCE(?, address),
-          passport_number = COALESCE(?, passport_number), passport_expiry = COALESCE(?, passport_expiry),
+          passport_number = COALESCE(?, passport_number),
+          passport_expiry = COALESCE(?, passport_expiry),
+          passport_expiry_date = COALESCE(?, passport_expiry_date),
+          passport_issue_date = COALESCE(?, passport_issue_date),
+          nationality = COALESCE(?, nationality),
+          passport_country = COALESCE(?, passport_country),
+          emergency_contact = COALESCE(?, emergency_contact),
+          medical_notes = COALESCE(?, medical_notes),
           passport_status = COALESCE(?, passport_status), marriage_doc_status = COALESCE(?, marriage_doc_status),
           visa_status = COALESCE(?, visa_status), notes = COALESCE(?, notes)
         WHERE nik = ?
       `).run(
-        no_kk, full_name, gender, birth_place, birth_date,
-        phone, email, address, passport_number, passport_expiry,
+        no_kk, full_name, jk, birth_place, birth_date,
+        phone, email, address, passport_number, kedaluwarsa,
+        kedaluwarsa, passport_issue_date || null,
+        nationality || null, passport_country || null,
+        emergency_contact || null, medical_notes || null,
         passport_status, marriage_doc_status, visa_status, notes, nik
       );
       return NextResponse.json({ success: true, message: 'Data Jamaah berhasil diperbarui', jamaah_id: exist.id });
@@ -143,11 +173,15 @@ export async function POST(request: Request) {
         INSERT INTO master_jamaah (
           nik, no_kk, full_name, gender, birth_place, birth_date,
           phone, email, address, passport_number, passport_expiry,
+          passport_expiry_date, passport_issue_date, nationality, passport_country,
+          emergency_contact, medical_notes,
           passport_status, marriage_doc_status, visa_status, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        nik, no_kk || '', full_name, gender || 'L', birth_place || '', birth_date || '',
-        phone || '', email || '', address || '', passport_number || '', passport_expiry || '',
+        nik, no_kk || '', full_name, jk || 'L', birth_place || '', birth_date || '',
+        phone || '', email || '', address || '', passport_number || null, kedaluwarsa,
+        kedaluwarsa, passport_issue_date || null, nationality || 'ID', passport_country || 'ID',
+        emergency_contact || null, medical_notes || null,
         passport_status || 'BELUM', marriage_doc_status || 'BELUM', visa_status || 'BELUM', notes || ''
       );
       return NextResponse.json({ success: true, message: 'Jamaah baru berhasil ditambahkan', jamaah_id: Number(res.lastInsertRowid) });

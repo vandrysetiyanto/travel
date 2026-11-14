@@ -261,17 +261,19 @@ export function ManifestTab() {
   const [manifest, setManifest] = useState<any[]>([]);
   const [batches, setBatches] = useState<any[]>([]);
   const [batchId, setBatchId] = useState('');
-  const [docFilter, setDocFilter] = useState<'ALL' | 'NO_VISA' | 'NO_PASSPORT'>('ALL');
+  const [docFilter, setDocFilter] = useState<'ALL' | 'NO_VISA' | 'NO_PASSPORT' | 'PASSPOR_RISIKO'>('ALL');
+  const [ringkas, setRingkas] = useState<any>(null);
 
   const load = useCallback(() => {
     const q = batchId ? `?batch_id=${batchId}` : '';
-    fetch('/api/admin/manifest' + q).then(r=>r.json()).then(d=>{ if(d.success){setManifest(d.manifest||[]);setBatches(d.batches||[]);} });
+    fetch('/api/admin/manifest' + q).then(r=>r.json()).then(d=>{ if(d.success){setManifest(d.manifest||[]);setBatches(d.batches||[]);setRingkas(d.ringkas||null);} });
   }, [batchId]);
   useEffect(()=>{load();},[load]);
 
   const filteredManifest = manifest.filter(m => {
     if (docFilter === 'NO_VISA') return m.visa_status !== 'ISSUED';
     if (docFilter === 'NO_PASSPORT') return m.passport_status !== 'SUDAH' || !m.passport_number;
+    if (docFilter === 'PASSPOR_RISIKO') return m.paspor_kurang_6bulan === true || m.paspor_kedaluwarsa === true;
     return true;
   });
 
@@ -280,7 +282,37 @@ export function ManifestTab() {
 
   const exportExcel = () => {
     import('xlsx').then(XLSX => {
-      const data = filteredManifest.map((m:any,i:number)=>({'No':i+1,'Nama':m.full_name,'NIK':m.nik,'JK':m.gender,'TTL':m.birth_place+', '+m.birth_date,'No. Paspor':m.passport_number||'-','Exp Paspor':m.passport_expiry||'-','Paspor':m.passport_status,'Visa':m.visa_status,'HP':m.phone,'Paket':m.package_name,'Batch':m.batch_name,'Berangkat':m.departure_date,'Maskapai':m.airline,'Hotel Makkah':m.hotel_makkah,'Hotel Madinah':m.hotel_madinah}));
+      /*
+       * Kolom disusun mengikuti urutan manifest bandara (IATA/APIS):
+       * nama, tanggal lahir, kewarganegaraan, jenis kelamin, nomor paspor,
+       * negara penerbit, kedaluwarsa paspor — lalu data operasional.
+       */
+      const data = filteredManifest.map((m:any,i:number)=>({
+        'No': i+1,
+        'Nama (sesuai paspor)': m.full_name,
+        'Tanggal Lahir': m.birth_date || '-',
+        'Tempat Lahir': m.birth_place || '-',
+        'Kewarganegaraan': m.nationality || 'ID',
+        'JK': m.gender,
+        'No. Paspor': m.passport_number || '-',
+        'Negara Penerbit': m.passport_country || 'ID',
+        'Tgl Terbit Paspor': m.passport_issue_date || '-',
+        'Exp Paspor': m.passport_expiry || '-',
+        'Sisa Hari': m.sisa_hari_paspor ?? '-',
+        'Peringatan Paspor': m.paspor_kedaluwarsa ? 'KEDALUWARSA' : m.paspor_kurang_6bulan ? '< 6 BULAN' : 'OK',
+        'Status Paspor': m.passport_status,
+        'Status Visa': m.visa_status,
+        'NIK': m.nik,
+        'No. HP': m.phone,
+        'Kontak Darurat': m.emergency_contact || '-',
+        'Catatan Medis': m.medical_notes || '-',
+        'Paket': m.package_name,
+        'Batch': m.batch_name,
+        'Berangkat': m.departure_date,
+        'Maskapai': m.airline,
+        'Hotel Makkah': m.hotel_makkah,
+        'Hotel Madinah': m.hotel_madinah,
+      }));
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Manifest Keberangkatan");
@@ -315,7 +347,7 @@ export function ManifestTab() {
           <table>
             <thead>
               <tr>
-                <th>No</th><th>Nama Jamaah</th><th>NIK</th><th>L/P</th><th>No. Paspor</th><th>Status Paspor</th><th>Status Visa</th><th>No. HP</th>
+                <th>No</th><th>Nama (sesuai paspor)</th><th>Tgl Lahir</th><th>L/P</th><th>Kewarganegaraan</th><th>No. Paspor</th><th>Negara Penerbit</th><th>Exp Paspor</th><th>Status Visa</th><th>No. HP</th>
               </tr>
             </thead>
             <tbody>
@@ -323,12 +355,14 @@ export function ManifestTab() {
                 <tr>
                   <td>${i+1}</td>
                   <td><b>${m.full_name}</b></td>
-                  <td>${m.nik}</td>
+                  <td>${m.birth_date || '-'}</td>
                   <td>${m.gender}</td>
+                  <td>${m.nationality || 'ID'}</td>
                   <td>${m.passport_number || '-'}</td>
-                  <td>${m.passport_status || '-'}</td>
+                  <td>${m.passport_country || 'ID'}</td>
+                  <td style="${m.paspor_kedaluwarsa ? 'background:#fee2e2;font-weight:bold' : m.paspor_kurang_6bulan ? 'background:#fef3c7;font-weight:bold' : ''}">${m.passport_expiry || '-'}</td>
                   <td>${m.visa_status || '-'}</td>
-                  <td>${m.phone}</td>
+                  <td>${m.phone || '-'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -383,19 +417,43 @@ export function ManifestTab() {
         </div>
       </div>
 
+      {/* Ringkasan risiko dokumen */}
+      {ringkas && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs">
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Jamaah</p>
+            <p className="text-lg font-black font-mono text-slate-900 mt-1">{ringkas.total_jamaah}</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-rose-200 p-4 shadow-xs">
+            <p className="text-[10px] font-black uppercase tracking-wider text-rose-500">Paspor &lt; 6 Bulan</p>
+            <p className="text-lg font-black font-mono text-rose-600 mt-1">{ringkas.paspor_kurang_6bulan}</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-amber-200 p-4 shadow-xs">
+            <p className="text-[10px] font-black uppercase tracking-wider text-amber-600">Tanpa No. Paspor</p>
+            <p className="text-lg font-black font-mono text-amber-700 mt-1">{ringkas.tanpa_nomor_paspor}</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs">
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Data Belum Lengkap</p>
+            <p className="text-lg font-black font-mono text-slate-700 mt-1">{ringkas.data_belum_lengkap}</p>
+          </div>
+        </div>
+      )}
+
       {/* Manifest Table */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-left">
               <th className="p-3">No</th>
-              <th className="p-3">Nama Jamaah</th>
-              <th className="p-3">NIK</th>
-              <th className="p-3">L/P</th>
+              <th className="p-3">Nama (sesuai paspor)</th>
+              <th className="p-3">Tgl Lahir</th>
+              <th className="p-3 text-center">L/P</th>
+              <th className="p-3 text-center">Kewarganegaraan</th>
               <th className="p-3">No. Paspor</th>
-              <th className="p-3">Status Paspor</th>
+              <th className="p-3 text-center">Negara Penerbit</th>
+              <th className="p-3">Exp Paspor</th>
               <th className="p-3">Status Visa</th>
-              <th className="p-3">No. WhatsApp</th>
+              <th className="p-3">Kontak Darurat</th>
               <th className="p-3">Batch / Paket</th>
             </tr>
           </thead>
@@ -403,26 +461,43 @@ export function ManifestTab() {
             {filteredManifest.map((m:any, i:number)=>(
               <tr key={m.id || i} className="hover:bg-slate-50 transition">
                 <td className="p-3 font-mono text-slate-400">{i+1}</td>
-                <td className="p-3 font-bold text-slate-900">{m.full_name}</td>
-                <td className="p-3 font-mono text-slate-600">{m.nik}</td>
-                <td className="p-3 text-slate-600">{m.gender}</td>
-                <td className="p-3 font-mono text-slate-600">{m.passport_number || '-'}</td>
                 <td className="p-3">
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${m.passport_status==='SUDAH'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
-                    {m.passport_status || 'BELUM'}
-                  </span>
+                  <span className="block font-bold text-slate-900">{m.full_name}</span>
+                  <span className="block text-[10px] font-mono text-slate-400">{m.nik}</span>
+                </td>
+                <td className="p-3 font-mono text-slate-600">{m.birth_date || <span className="text-rose-500">-</span>}</td>
+                <td className="p-3 text-center text-slate-600">{m.gender}</td>
+                <td className="p-3 text-center font-mono text-slate-600">{m.nationality || 'ID'}</td>
+                <td className="p-3 font-mono text-slate-600">
+                  {m.passport_number || <span className="text-rose-500 font-bold">belum ada</span>}
+                </td>
+                <td className="p-3 text-center font-mono text-slate-600">{m.passport_country || 'ID'}</td>
+                <td className="p-3 font-mono">
+                  {m.passport_expiry ? (
+                    <span className={
+                      m.paspor_kedaluwarsa ? 'text-rose-600 font-bold' :
+                      m.paspor_kurang_6bulan ? 'text-amber-600 font-bold' : 'text-slate-600'
+                    }>
+                      {m.passport_expiry}
+                      {m.paspor_kedaluwarsa && <span className="block text-[9px]">KEDALUWARSA</span>}
+                      {m.paspor_kurang_6bulan && <span className="block text-[9px]">&lt; 6 bulan</span>}
+                    </span>
+                  ) : <span className="text-rose-500">-</span>}
                 </td>
                 <td className="p-3">
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${m.visa_status==='ISSUED'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
                     {m.visa_status || 'PENDING'}
                   </span>
                 </td>
-                <td className="p-3 font-mono text-slate-600">{m.phone}</td>
-                <td className="p-3 text-slate-600">{m.batch_name}</td>
+                <td className="p-3 text-[11px] text-slate-600">{m.emergency_contact || '-'}</td>
+                <td className="p-3 text-slate-600">
+                  <span className="block text-[11px] font-bold">{m.batch_name}</span>
+                  <span className="block text-[10px] text-slate-400">{m.package_name}</span>
+                </td>
               </tr>
             ))}
             {filteredManifest.length===0 && (
-              <tr><td colSpan={9} className="text-center py-8 text-slate-400">Tidak ada data manifest yang sesuai dengan filter.</td></tr>
+              <tr><td colSpan={11} className="text-center py-8 text-slate-400">Tidak ada data manifest yang sesuai dengan filter.</td></tr>
             )}
           </tbody>
         </table>

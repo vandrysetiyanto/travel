@@ -117,6 +117,60 @@ export const MIGRATIONS: Migrasi[] = [
       db.exec('CREATE INDEX IF NOT EXISTS idx_itinerary_paket ON package_itinerary(package_id, hari)');
     },
   },
+  {
+    nomor: 4,
+    nama: 'data-paspor-manifest-bandara',
+    jalankan: (db) => {
+      /*
+       * Melengkapi data paspor sesuai standar manifest bandara (IATA API
+       * Guidelines / APIS): kewarganegaraan, negara penerbit, tanggal terbit,
+       * kedaluwarsa, kontak darurat, dan catatan medis.
+       *
+       * TEMUAN PENTING: form UI sudah meminta `passport_issue_date`,
+       * `passport_expiry_date`, `emergency_contact`, dan `medical_notes`, tetapi
+       * kolomnya TIDAK PERNAH ADA di database dan API tidak menyimpannya —
+       * artinya bertahun-tahun data yang diketik staf hilang tanpa error.
+       *
+       * Semua kolom nullable: tidak memaksa data lama diisi.
+       */
+      const adaKolom = (tabel: string, kolom: string) =>
+        (db.prepare(`PRAGMA table_info(${tabel})`).all() as { name: string }[]).some((c) => c.name === kolom);
+
+      const tambah = (kolom: string, ddl: string) => {
+        if (!adaKolom('master_jamaah', kolom)) db.exec(`ALTER TABLE master_jamaah ADD COLUMN ${ddl}`);
+      };
+
+      // Wajib untuk APIS
+      tambah('nationality', "nationality TEXT DEFAULT 'ID'");
+      tambah('passport_country', "passport_country TEXT DEFAULT 'ID'");
+
+      // Standar paspor & operasional lapangan
+      tambah('passport_issue_date', 'passport_issue_date TEXT');
+      tambah('passport_expiry_date', 'passport_expiry_date TEXT');
+      tambah('emergency_contact', 'emergency_contact TEXT');
+      tambah('medical_notes', 'medical_notes TEXT');
+
+      /*
+       * Satukan dua kolom kedaluwarsa: `passport_expiry` (dipakai manifest lama)
+       * dan `passport_expiry_date` (dipakai form). Salin nilai yang ada agar
+       * tidak ada data yang "hilang" hanya karena nama kolom berbeda.
+       */
+      db.exec(`
+        UPDATE master_jamaah
+           SET passport_expiry = passport_expiry_date
+         WHERE (passport_expiry IS NULL OR passport_expiry = '')
+           AND passport_expiry_date IS NOT NULL AND passport_expiry_date <> '';
+      `);
+
+      // Nilai kosong string -> NULL agar filter "belum punya paspor" akurat
+      db.exec(`
+        UPDATE master_jamaah SET passport_number = NULL WHERE TRIM(COALESCE(passport_number,'')) = '';
+        UPDATE master_jamaah SET passport_expiry = NULL WHERE TRIM(COALESCE(passport_expiry,'')) = '';
+      `);
+
+      db.exec('CREATE INDEX IF NOT EXISTS idx_jamaah_passport ON master_jamaah(passport_expiry)');
+    },
+  },
 ];
 
 export type HasilMigrasi = {
