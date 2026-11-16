@@ -12,6 +12,7 @@ export type SumberLedger = {
   expenseId?: number | null;
   journalId?: number | null;
   paymentId?: number | null;
+  commissionId?: number | null;
   /**
    * Kloter (cost center) tempat biaya ini dibebankan. Opsional: baris lama
    * tetap NULL. Bila tidak diisi padahal ada transactionId, nilainya diambil
@@ -41,8 +42,8 @@ export function tulisLedger(
   const info = db
     .prepare(`
       INSERT INTO ledger (entry_date, coa_account_id, entry_type, amount, description, reference,
-                          transaction_id, expense_id, journal_id, payment_id, batch_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          transaction_id, expense_id, journal_id, payment_id, commission_id, batch_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       baris.entryDate,
@@ -55,6 +56,7 @@ export function tulisLedger(
       idAtauNull(sumber.expenseId),
       idAtauNull(sumber.journalId),
       idAtauNull(sumber.paymentId),
+      idAtauNull(sumber.commissionId),
       idAtauNull(sumber.batchId) ?? batchDariTransaksi(sumber.transactionId),
     );
   return Number(info.lastInsertRowid);

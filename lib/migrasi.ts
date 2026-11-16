@@ -171,6 +171,112 @@ export const MIGRATIONS: Migrasi[] = [
       db.exec('CREATE INDEX IF NOT EXISTS idx_jamaah_passport ON master_jamaah(passport_expiry)');
     },
   },
+  {
+    nomor: 5,
+    nama: 'modul-komisi-agen',
+    jalankan: (db) => {
+      /*
+       * Modul Komisi Agen:
+       * - Master agents (FIX vs AKUMULASI)
+       * - agent_tiers (ambang batas & kenaikan untuk mode AKUMULASI)
+       * - commissions (status PENDING -> ELIGIBLE saat lunas -> PAID saat dibayar)
+       * - commission_payments (pencatatan pembayaran, bisa dicicil)
+       * - COA baru: 5-110 Beban Komisi, 2-102 Utang Komisi, 1-105 Piutang Agen
+       * - Kolom agent_id di transactions
+       */
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS agents (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          code TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          type TEXT DEFAULT 'PERORANGAN', -- PERORANGAN | TRAVEL | KOMUNITAS
+          phone TEXT,
+          email TEXT,
+          bank_name TEXT,
+          bank_account_no TEXT,
+          bank_holder_name TEXT,
+          commission_mode TEXT DEFAULT 'FIX', -- FIX | AKUMULASI
+          fix_amount REAL DEFAULT 0,
+          status TEXT DEFAULT 'AKTIF', -- AKTIF | NONAKTIF
+          notes TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_tiers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          agent_id INTEGER NOT NULL,
+          min_count INTEGER NOT NULL,
+          max_count INTEGER, -- NULL = tak terbatas (e.g. 6+)
+          amount REAL NOT NULL,
+          FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS commissions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          transaction_id INTEGER UNIQUE NOT NULL,
+          agent_id INTEGER NOT NULL,
+          jamaah_id INTEGER NOT NULL,
+          calculation_type TEXT NOT NULL, -- FIX | AKUMULASI
+          jamaah_index INTEGER, -- hitungan ke- sekian saat lahir (snapshot)
+          tier_applied TEXT, -- deskripsi tier mis. "1-5" atau "6+"
+          nominal REAL NOT NULL,
+          status TEXT DEFAULT 'PENDING', -- PENDING | ELIGIBLE | PAID | CANCELLED
+          repeat_policy TEXT DEFAULT 'ALWAYS', -- ALWAYS | FIRST_ONLY (snapshot kebijakan saat lahir)
+          eligible_date TEXT, -- tanggal layak cair (mis. tanggal keberangkatan / lunas)
+          paid_date TEXT,
+          ledger_id INTEGER,
+          notes TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
+          FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE RESTRICT,
+          FOREIGN KEY (jamaah_id) REFERENCES master_jamaah(id) ON DELETE RESTRICT
+        );
+
+        CREATE TABLE IF NOT EXISTS commission_payments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          commission_id INTEGER NOT NULL,
+          amount REAL NOT NULL,
+          paid_date TEXT DEFAULT CURRENT_TIMESTAMP,
+          method TEXT DEFAULT 'TRANSFER',
+          reference_no TEXT,
+          proof_image TEXT,
+          paid_by TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (commission_id) REFERENCES commissions(id) ON DELETE CASCADE
+        );
+      `);
+
+      // Tambah kolom commission_id di ledger jika belum ada
+      const hasLedgerCommId = (db.prepare('PRAGMA table_info(ledger)').all() as { name: string }[]).some(c => c.name === 'commission_id');
+      if (!hasLedgerCommId) {
+        db.exec('ALTER TABLE ledger ADD COLUMN commission_id INTEGER REFERENCES commissions(id) ON DELETE CASCADE');
+      }
+
+      // Tambah kolom agent_id di transactions jika belum ada
+      const hasAgentId = (db.prepare('PRAGMA table_info(transactions)').all() as { name: string }[]).some(c => c.name === 'agent_id');
+      if (!hasAgentId) {
+        db.exec('ALTER TABLE transactions ADD COLUMN agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL');
+      }
+
+      // Tambah COA baru untuk komisi
+      const coaList = [
+        { code: '5-110', name: 'Beban Komisi Agen', group: 'Beban', type: 'Beban Operasional' },
+        { code: '2-102', name: 'Utang Komisi Agen', group: 'Liabilitas', type: 'Liabilitas Jangka Pendek' },
+        { code: '1-105', name: 'Piutang Agen', group: 'Aset', type: 'Aset Lancar' },
+      ];
+      const insertCoa = db.prepare('INSERT OR IGNORE INTO chart_of_accounts (coa_code, coa_name, coa_type, coa_group) VALUES (?, ?, ?, ?)');
+      for (const c of coaList) {
+        insertCoa.run(c.code, c.name, c.type, c.group);
+      }
+
+      // Indeks performa
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_commissions_status ON commissions(status);
+        CREATE INDEX IF NOT EXISTS idx_commissions_agent ON commissions(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_agent_tiers_agent ON agent_tiers(agent_id);
+      `);
+    },
+  },
 ];
 
 export type HasilMigrasi = {

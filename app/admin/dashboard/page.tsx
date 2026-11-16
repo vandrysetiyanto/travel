@@ -7,6 +7,7 @@ import { LaporanTab, LedgerTab, StockLedgerTab, GeneralJournalTab } from '@/comp
 import { ChecklistTab, ManifestTab, RegistrationsTab } from '@/components/dashboard/operasional';
 import { RiwayatJamaahTab } from '@/components/dashboard/riwayat-jamaah';
 import { LabaRugiKloterTab } from '@/components/dashboard/laba-rugi-kloter';
+import { MasterAgenTab, KomisiAgenTab } from '@/components/dashboard/agen';
 
 import { EmptyState, StatusBadge, DocBadge, FInput, ToastContainer } from '@/components/dashboard/ui-dasar';
 
@@ -21,7 +22,7 @@ import { CheckSquare, FileText, Calculator, Wallet, LayoutDashboard, Users, Pack
 
 
 
-type Tab = 'dashboard' | 'riwayat-jamaah' | 'laba-rugi-kloter' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings';
+type Tab = 'dashboard' | 'riwayat-jamaah' | 'laba-rugi-kloter' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings' | 'agents' | 'komisi';
 type MasterSub = 'jamaah' | 'paket' | 'inventaris';
 
 /* ===================== DASHBOARD TAB ===================== */
@@ -2028,6 +2029,7 @@ export default function AdminDashboard() {
         { id: 'batches', perm: 'paket.read', icon: <Plane className="w-4 h-4" />, label: 'Jadwal & Batch' },
         { id: 'inventory', perm: 'inventory.read', icon: <Boxes className="w-4 h-4" />, label: 'Inventaris & Stok' },
         { id: 'master-coa' as Tab, perm: 'coa.manage', icon: <Calculator className="w-4 h-4" />, label: 'Master Akun COA' },
+        { id: 'agents' as Tab, perm: 'jamaah.read', icon: <Users className="w-4 h-4" />, label: 'Master Agen' },
       ],
     },
     {
@@ -2037,6 +2039,7 @@ export default function AdminDashboard() {
         { id: 'pembayaran', perm: 'payment.read', icon: <Receipt className="w-4 h-4" />, label: 'Verifikasi Pembayaran' },
         { id: 'general-journal' as Tab, perm: 'journal.read', icon: <BookOpen className="w-4 h-4" />, label: 'Jurnal Umum (Memorial)' },
         { id: 'expenses' as Tab, perm: 'expense.manage', icon: <CreditCard className="w-4 h-4" />, label: 'Beban Operasional' },
+        { id: 'komisi' as Tab, perm: 'payment.read', icon: <Wallet className="w-4 h-4" />, label: 'Pencairan Komisi' },
       ],
     },
     {
@@ -2319,6 +2322,8 @@ export default function AdminDashboard() {
             {activeTab === 'stock-ledger' && <StockLedgerTab />}
           {activeTab === 'general-journal' && <GeneralJournalTab />}
           {activeTab === 'expenses' && <ExpensesTab />}
+          {activeTab === 'agents' && <MasterAgenTab />}
+          {activeTab === 'komisi' && <KomisiAgenTab />}
         </div>
       </main>
       <ToastContainer toast={toast} onClose={() => setToast(null)} />
