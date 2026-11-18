@@ -2248,7 +2248,7 @@ export default function AdminDashboard() {
                           {(sideOpen || mobileMenuOpen) && (
                             <span className="truncate inline-flex items-center">
                               {item.label}
-                              {['agents', 'komisi', 'kesiapan-kloter', 'laba-rugi-kloter'].includes(item.id) && <NewBadge releaseDate="2026-11-14" />}
+                              {['agents', 'komisi', 'kesiapan-kloter', 'laba-rugi-kloter', 'rooming-list', 'tracking-dokumen'].includes(item.id) && <NewBadge releaseDate="2026-11-14" />}
                             </span>
                           )}
                         </button>
