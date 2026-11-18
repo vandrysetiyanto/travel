@@ -116,7 +116,7 @@ export function TrackingDokumenTab() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-          <table className="w-full text-left text-xs">
+          <div className="overflow-x-auto"><table className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600">
               <tr>
                 <th className="p-3">Nama Jamaah</th>
@@ -163,7 +163,7 @@ export function TrackingDokumenTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
