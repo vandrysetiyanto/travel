@@ -87,6 +87,7 @@ export async function GET(request: Request) {
         nextBatch: nextBatch || null,
       },
       recentTransactions,
+      monthlyRevenue,
     }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch (error: any) {
     return galatServer(error, { bagian: 'admin/stats' });
