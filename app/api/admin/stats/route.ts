@@ -44,6 +44,22 @@ export async function GET(request: Request) {
        LIMIT 1
     `).get() as any;
 
+    const rawMonthly = db.prepare(`
+      SELECT strftime('%Y-%m', created_at) as m, COALESCE(SUM(paid_amount),0) as total
+        FROM transactions
+       WHERE status != 'CANCELLED'
+       GROUP BY m
+       ORDER BY m DESC
+       LIMIT 6
+    `).all() as any[];
+    const monthlyRevenue = rawMonthly.reverse().map((r: any) => {
+      const parts = r.m.split('-');
+      const year = parts[0];
+      const monthNum = Number(parts[1]) - 1;
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      return { label: `${months[monthNum] || r.m} ${year}`, amount: r.total };
+    });
+
     const recentTransactions = db.prepare(`
       SELECT t.*, j.full_name, j.nik, b.batch_name, p.name as package_name
       FROM transactions t
