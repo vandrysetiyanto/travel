@@ -10,6 +10,7 @@ import { LabaRugiKloterTab } from '@/components/dashboard/laba-rugi-kloter';
 import { NewBadge } from '@/components/dashboard/new-badge';
 import { KesiapanKloterTab } from '@/components/dashboard/kesiapan-kloter';
 import { RoomingListTab } from '@/components/dashboard/rooming-list';
+import { TrackingDokumenTab } from '@/components/dashboard/tracking-dokumen';
 import { MasterAgenTab, KomisiAgenTab } from '@/components/dashboard/agen';
 
 import { EmptyState, StatusBadge, DocBadge, FInput, ToastContainer } from '@/components/dashboard/ui-dasar';
@@ -25,7 +26,7 @@ import { Bed, CheckSquare, FileText, Calculator, Wallet, LayoutDashboard, Users,
 
 
 
-type Tab = 'dashboard' | 'riwayat-jamaah' | 'laba-rugi-kloter' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings' | 'agents' | 'komisi' | 'kesiapan-kloter' | 'rooming-list';
+type Tab = 'dashboard' | 'riwayat-jamaah' | 'laba-rugi-kloter' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings' | 'agents' | 'komisi' | 'kesiapan-kloter' | 'rooming-list' | 'tracking-dokumen';
 type MasterSub = 'jamaah' | 'paket' | 'inventaris';
 
 /* ===================== DASHBOARD TAB ===================== */
@@ -2051,6 +2052,7 @@ export default function AdminDashboard() {
         { id: 'manifest', perm: 'report.operational', icon: <Plane className="w-4 h-4" />, label: 'Manifest Keberangkatan' },
         { id: 'kesiapan-kloter' as Tab, perm: 'report.operational', icon: <CheckCircle2 className="w-4 h-4" />, label: 'Kesiapan Operasional' },
         { id: 'rooming-list' as Tab, perm: 'report.operational', icon: <Bed className="w-4 h-4" />, label: 'Rooming List Hotel' },
+        { id: 'tracking-dokumen' as Tab, perm: 'report.operational', icon: <FileText className="w-4 h-4" />, label: 'Tracking Fisik Dokumen' },
         { id: 'registrations', perm: 'booking.read', icon: <ClipboardList className="w-4 h-4" />, label: 'Registrasi Online' },
         { id: 'checklist' as Tab, perm: 'checklist.read', icon: <CheckSquare className="w-4 h-4" />, label: 'Checklist Kelengkapan' },
       ],
@@ -2318,6 +2320,7 @@ export default function AdminDashboard() {
           {activeTab === 'manifest' && <ManifestTab />}
           {activeTab === 'kesiapan-kloter' && <KesiapanKloterTab />}
           {activeTab === 'rooming-list' && <RoomingListTab />}
+          {activeTab === 'tracking-dokumen' && <TrackingDokumenTab />}
           {activeTab === 'staf' && has('staff.manage') && <KelolaStaf />}
           {activeTab === 'roles' && has('staff.manage') && <KelolaIzinRole />}
           {activeTab === 'audit' && has('audit.read') && <LogAktivitas />}

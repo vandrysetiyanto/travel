@@ -340,6 +340,29 @@ export const MIGRATIONS: Migrasi[] = [
       `);
     },
   },
+  {
+    nomor: 8,
+    nama: 'tracking-fisik-dokumen',
+    jalankan: (db) => {
+      /*
+       * Modul Tracking Status Fisik Dokumen (Inspirasi Travelsys):
+       * Melacak posisi fisik paspor (DI_KANTOR, VENDOR, KEDUTAAN, SELESAI)
+       * dan status fisik visa serta catatan dokumen per jamaah.
+       */
+      const adaKolom = (tabel: string, kolom: string) =>
+        (db.prepare(`PRAGMA table_info(${tabel})`).all() as { name: string }[]).some((c) => c.name === kolom);
+
+      const tambah = (tabel: string, kolom: string, ddl: string) => {
+        if (!adaKolom(tabel, kolom)) db.exec(`ALTER TABLE ${tabel} ADD COLUMN ${ddl}`);
+      };
+
+      tambah('master_jamaah', 'passport_physical_status', "passport_physical_status TEXT DEFAULT 'DI_KANTOR'");
+      tambah('master_jamaah', 'visa_physical_status', "visa_physical_status TEXT DEFAULT 'BELUM'");
+      tambah('master_jamaah', 'document_notes', "document_notes TEXT");
+
+      db.exec('CREATE INDEX IF NOT EXISTS idx_jamaah_doc_status ON master_jamaah(passport_physical_status)');
+    },
+  },
 ];
 
 export type HasilMigrasi = {
