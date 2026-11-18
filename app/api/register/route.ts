@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { galatServer } from '@/lib/galat';
 import db, { initDB } from '@/lib/db';
 import { generateBookingCode } from '@/lib/utils';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 initDB();
 
@@ -14,6 +15,10 @@ initDB();
  */
 export async function POST(req: Request) {
   try {
+    const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
+    if (!checkRateLimit(ip, 10, 60000)) {
+      return NextResponse.json({ success: false, message: 'Terlalu banyak permintaan dari IP Anda. Silakan coba lagi dalam 1 menit.' }, { status: 429 });
+    }
     const data = await req.json();
     const { batch_id, applicant_name, applicant_phone, applicant_email, registration_type, pilgrims, notes } = data;
 

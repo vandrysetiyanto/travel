@@ -3,10 +3,15 @@ import { galatServer } from '@/lib/galat';
 import db from '@/lib/db';
 import { generateReceiptNumber } from '@/lib/utils';
 import { recalcTransaction } from '@/lib/booking';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 /** Unggah bukti transfer oleh jemaah (tanpa login, hanya butuh kode booking). */
 export async function POST(req: Request) {
   try {
+    const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
+    if (!checkRateLimit(ip, 15, 60000)) {
+      return NextResponse.json({ success: false, message: 'Terlalu banyak permintaan dari IP Anda. Silakan coba lagi dalam 1 menit.' }, { status: 429 });
+    }
     const formData = await req.formData();
     const booking_code = String(formData.get('booking_code') || '').trim();
     const amount = Number(formData.get('amount'));
@@ -47,10 +52,26 @@ export async function POST(req: Request) {
       const uploadDir = path.join(process.cwd(), 'public', 'uploads');
       if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-      const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'pdf'].includes(ext) ? `.${ext}` : '.jpg';
-      const proofFileName = `proof_${Date.now()}_${Math.floor(Math.random() * 1000)}${safeExt}`;
       const buffer = Buffer.from(await file.arrayBuffer());
-      fs.writeFileSync(path.join(uploadDir, proofFileName), buffer);
+      let finalBuffer = buffer;
+      let finalExt = ext;
+
+      if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) {
+        try {
+          const sharp = (await import('sharp')).default;
+          finalBuffer = await sharp(buffer)
+            .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 80 })
+            .toBuffer();
+          finalExt = 'jpg';
+        } catch (e) {
+          console.error('Sharp compression error, fallback to original:', e);
+        }
+      }
+
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'pdf'].includes(finalExt) ? `.${finalExt}` : '.jpg';
+      const proofFileName = `proof_${Date.now()}_${Math.floor(Math.random() * 1000)}${safeExt}`;
+      fs.writeFileSync(path.join(uploadDir, proofFileName), finalBuffer);
       proofPath = `/uploads/${proofFileName}`;
     }
 
