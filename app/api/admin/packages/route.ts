@@ -51,9 +51,14 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, message: 'Nama paket dan harga wajib diisi' }, { status: 400 });
       }
 
+      const { price_quad, price_triple, price_double } = body;
+      const qPrice = Number(price_quad) || Number(price) || 0;
+      const tPrice = Number(price_triple) || qPrice;
+      const dPrice = Number(price_double) || qPrice;
+
       const insertPkg = db.prepare(`
-        INSERT INTO packages (name, category, description, duration_days, price, hotel_makkah, hotel_madinah, airline, departure_city)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO packages (name, category, description, duration_days, price, price_quad, price_triple, price_double, hotel_makkah, hotel_madinah, airline, departure_city)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       const pkgResult = insertPkg.run(
         name,
@@ -61,6 +66,9 @@ export async function POST(req: Request) {
         description || '',
         Number(duration_days) || 9,
         Number(price),
+        qPrice,
+        tPrice,
+        dPrice,
         hotel_makkah || '',
         hotel_madinah || '',
         airline || '',
@@ -89,16 +97,22 @@ export async function POST(req: Request) {
     // 2. Update Paket
     if (action === 'UPDATE_PACKAGE') {
       { const cek = await requirePermission(req, 'paket.update'); if (!cek.ok) return cek.response; }
-      const { id, name, category, description, duration_days, price, hotel_makkah, hotel_madinah, airline, departure_city, is_active } = body;
+      const { id, name, category, description, duration_days, price, price_quad, price_triple, price_double, hotel_makkah, hotel_madinah, airline, departure_city, is_active } = body;
+      const qPrice = Number(price_quad) || Number(price) || 0;
+      const tPrice = Number(price_triple) || qPrice;
+      const dPrice = Number(price_double) || qPrice;
+
       db.prepare(`
         UPDATE packages SET
           name = ?, category = ?, description = ?, duration_days = ?,
-          price = ?, hotel_makkah = ?, hotel_madinah = ?, airline = ?,
+          price = ?, price_quad = ?, price_triple = ?, price_double = ?,
+          hotel_makkah = ?, hotel_madinah = ?, airline = ?,
           departure_city = ?, is_active = ?
         WHERE id = ?
       `).run(
         name, category, description, Number(duration_days),
-        Number(price), hotel_makkah, hotel_madinah, airline,
+        Number(price), qPrice, tPrice, dPrice,
+        hotel_makkah, hotel_madinah, airline,
         departure_city, is_active ?? 1, id
       );
       return NextResponse.json({ success: true, message: 'Data paket berhasil diperbarui!' });

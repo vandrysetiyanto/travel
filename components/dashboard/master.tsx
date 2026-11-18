@@ -293,6 +293,21 @@ export function MasterPaket() {
                 </div>
                 <input type="number" inputMode="numeric" pattern="[0-9]*" value={form.price||''} onChange={e=>setForm({...form,price:e.target.value})} placeholder="35000000" className="w-full border rounded-xl px-3 py-2 text-xs font-mono" />
               </div>
+              <div className="md:col-span-2 bg-slate-50 p-3 rounded-xl border border-slate-200 grid grid-cols-3 gap-2">
+                <div className="col-span-3 text-[11px] font-bold text-slate-700">Harga Kamar Bertingkat (Opsional - jika dikosongkan mengikuti harga dasar):</div>
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-0.5">Quad (4 Bed)</label>
+                  <input type="number" value={form.price_quad||''} onChange={e=>setForm({...form,price_quad:e.target.value})} placeholder="Standar" className="w-full border rounded-lg p-1.5 text-xs font-mono" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-0.5">Triple (3 Bed)</label>
+                  <input type="number" value={form.price_triple||''} onChange={e=>setForm({...form,price_triple:e.target.value})} placeholder="+ Selisih" className="w-full border rounded-lg p-1.5 text-xs font-mono" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-0.5">Double (2 Bed)</label>
+                  <input type="number" value={form.price_double||''} onChange={e=>setForm({...form,price_double:e.target.value})} placeholder="+ Selisih" className="w-full border rounded-lg p-1.5 text-xs font-mono" />
+                </div>
+              </div>
               <FInput label="Durasi (Hari)" field="duration_days" type="number" form={form} setForm={setForm} placeholder="9"/>
               <FInput label="Hotel Makkah" field="hotel_makkah" form={form} setForm={setForm} placeholder="Pullman Zamzam"/>
               <FInput label="Hotel Madinah" field="hotel_madinah" form={form} setForm={setForm} placeholder="Front Pekan"/>

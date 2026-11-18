@@ -277,6 +277,42 @@ export const MIGRATIONS: Migrasi[] = [
       `);
     },
   },
+  {
+    nomor: 6,
+    nama: 'adopsi-fitur-ergonomis',
+    jalankan: (db) => {
+      /*
+       * Adopsi fitur standar industri travel (Erahajj & ProHajj):
+       * 1. Harga kamar bertingkat (Quad, Triple, Double) di tabel packages.
+       * 2. Status pelacakan fisik paspor (KANTOR, VENDOR, KEDUTAAN, SELESAI) di master_jamaah.
+       * 3. Ringkasan itinerary per paket.
+       *
+       * Semua perubahan aditif: kolom lama tetap ada dan berfungsi normal.
+       */
+      const adaKolom = (tabel: string, kolom: string) =>
+        (db.prepare(`PRAGMA table_info(${tabel})`).all() as { name: string }[]).some((c) => c.name === kolom);
+
+      const tambah = (tabel: string, kolom: string, ddl: string) => {
+        if (!adaKolom(tabel, kolom)) db.exec(`ALTER TABLE ${tabel} ADD COLUMN ${ddl}`);
+      };
+
+      // Paket: harga per tipe kamar & itinerary
+      tambah('packages', 'price_quad', 'price_quad REAL DEFAULT 0');
+      tambah('packages', 'price_triple', 'price_triple REAL DEFAULT 0');
+      tambah('packages', 'price_double', 'price_double REAL DEFAULT 0');
+      tambah('packages', 'itinerary_summary', 'itinerary_summary TEXT');
+
+      // Sinkronkan harga lama ke price_quad jika belum ada
+      db.exec(`
+        UPDATE packages
+           SET price_quad = price
+         WHERE price_quad IS NULL OR price_quad = 0;
+      `);
+
+      // Jamaah: status fisik paspor
+      tambah('master_jamaah', 'passport_physical_status', "passport_physical_status TEXT DEFAULT 'DI_KANTOR'");
+    },
+  },
 ];
 
 export type HasilMigrasi = {
