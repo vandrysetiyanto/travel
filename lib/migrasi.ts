@@ -313,6 +313,33 @@ export const MIGRATIONS: Migrasi[] = [
       tambah('master_jamaah', 'passport_physical_status', "passport_physical_status TEXT DEFAULT 'DI_KANTOR'");
     },
   },
+  {
+    nomor: 7,
+    nama: 'modul-rooming-list',
+    jalankan: (db) => {
+      /*
+       * Modul Rooming List (Inspirasi Safar & Erahajj):
+       * Mengatur alokasi kamar hotel (Makkah & Madinah) dengan tipe kamar
+       * (Quad, Triple, Double) per kloter/batch agar pembagian kamar di lobi hotel
+       * terstruktur rapi dan tidak ricuh.
+       */
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rooming_list (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          batch_id INTEGER NOT NULL,
+          hotel_location TEXT NOT NULL, -- 'MAKKAH' | 'MADINAH'
+          room_type TEXT NOT NULL,      -- 'QUAD' | 'TRIPLE' | 'DOUBLE' | 'SINGLE'
+          room_number TEXT NOT NULL,    -- cth. '101', 'Kamar 202'
+          jamaah_id INTEGER NOT NULL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE CASCADE,
+          FOREIGN KEY (jamaah_id) REFERENCES master_jamaah(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rooming_batch ON rooming_list(batch_id);
+      `);
+    },
+  },
 ];
 
 export type HasilMigrasi = {
