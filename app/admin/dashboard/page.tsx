@@ -7,6 +7,7 @@ import { LaporanTab, LedgerTab, StockLedgerTab, GeneralJournalTab } from '@/comp
 import { ChecklistTab, ManifestTab, RegistrationsTab } from '@/components/dashboard/operasional';
 import { RiwayatJamaahTab } from '@/components/dashboard/riwayat-jamaah';
 import { LabaRugiKloterTab } from '@/components/dashboard/laba-rugi-kloter';
+import { KesiapanKloterTab } from '@/components/dashboard/kesiapan-kloter';
 import { MasterAgenTab, KomisiAgenTab } from '@/components/dashboard/agen';
 
 import { EmptyState, StatusBadge, DocBadge, FInput, ToastContainer } from '@/components/dashboard/ui-dasar';
@@ -22,7 +23,7 @@ import { CheckSquare, FileText, Calculator, Wallet, LayoutDashboard, Users, Pack
 
 
 
-type Tab = 'dashboard' | 'riwayat-jamaah' | 'laba-rugi-kloter' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings' | 'agents' | 'komisi';
+type Tab = 'dashboard' | 'riwayat-jamaah' | 'laba-rugi-kloter' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings' | 'agents' | 'komisi' | 'kesiapan-kloter';
 type MasterSub = 'jamaah' | 'paket' | 'inventaris';
 
 /* ===================== DASHBOARD TAB ===================== */
@@ -2046,6 +2047,7 @@ export default function AdminDashboard() {
       groupName: 'Operasional & Jamaah',
       items: [
         { id: 'manifest', perm: 'report.operational', icon: <Plane className="w-4 h-4" />, label: 'Manifest Keberangkatan' },
+        { id: 'kesiapan-kloter' as Tab, perm: 'report.operational', icon: <CheckCircle2 className="w-4 h-4" />, label: 'Kesiapan Operasional' },
         { id: 'registrations', perm: 'booking.read', icon: <ClipboardList className="w-4 h-4" />, label: 'Registrasi Online' },
         { id: 'checklist' as Tab, perm: 'checklist.read', icon: <CheckSquare className="w-4 h-4" />, label: 'Checklist Kelengkapan' },
       ],
@@ -2306,6 +2308,7 @@ export default function AdminDashboard() {
           {activeTab === 'inventory' && <MasterInventaris />}
           {activeTab === 'transaksi' && <TransaksiTab />}
           {activeTab === 'manifest' && <ManifestTab />}
+          {activeTab === 'kesiapan-kloter' && <KesiapanKloterTab />}
           {activeTab === 'staf' && has('staff.manage') && <KelolaStaf />}
           {activeTab === 'roles' && has('staff.manage') && <KelolaIzinRole />}
           {activeTab === 'audit' && has('audit.read') && <LogAktivitas />}
