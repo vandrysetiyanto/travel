@@ -85,3 +85,29 @@ export const BANK_ACCOUNTS = [
   { bank: 'Bank Mandiri', number: '130-00-1234567', holder: 'a.n PT Al-Barakah Travel' },
   { bank: 'Bank BSI', number: '720-123-4567', holder: 'a.n PT Al-Barakah Travel' },
 ];
+
+
+/**
+ * Otomatis membatalkan (expire) transaksi PENDING yang belum membayar DP
+ * setelah melewati batas waktu (default 48 jam), sehingga kuota kursi
+ * kembali terbuka untuk jamaah lain.
+ */
+export function expirePendingBookings(hoursLimit = 48): number {
+  try {
+    const res = db.prepare(`
+      UPDATE transactions
+         SET status = 'CANCELLED',
+             notes = CASE 
+               WHEN notes IS NULL OR notes = '' THEN '[Auto-Expired: DP melewati batas waktu 48 jam]'
+               ELSE notes || ' [Auto-Expired: DP melewati batas waktu 48 jam]'
+             END
+       WHERE status = 'PENDING'
+         AND paid_amount = 0
+         AND datetime(created_at, '+' || ? || ' hours') < datetime('now')
+    `).run(hoursLimit);
+    return res.changes;
+  } catch (err) {
+    console.error('Error expirePendingBookings:', err);
+    return 0;
+  }
+}

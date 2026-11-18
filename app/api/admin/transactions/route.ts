@@ -8,6 +8,7 @@ import { hapusHppPenyerahan } from '@/lib/persediaan';
 import { tanggalWib } from '@/lib/waktu';
 import { cekBentrokJadwal, pesanBentrok, tautkanJamaah } from '@/lib/booking-jamaah';
 import { statusSah, bolehTransisi, LABEL_STATUS } from '@/lib/status-booking';
+import { expirePendingBookings } from '@/lib/booking';
 
 initDB();
 
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
   if (!auth.ok) return auth.response;
 
   try {
+    expirePendingBookings(48);
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const batch_id = searchParams.get('batch_id');
