@@ -363,6 +363,26 @@ export const MIGRATIONS: Migrasi[] = [
       db.exec('CREATE INDEX IF NOT EXISTS idx_jamaah_doc_status ON master_jamaah(passport_physical_status)');
     },
   },
+  {
+    nomor: 9,
+    nama: 'qr-koper-presensi-bandara',
+    jalankan: (db) => {
+      /*
+       * Modul QR Code Koper & Presensi Bandara (Inspirasi Erahajj):
+       * Menambahkan status presensi keberangkatan jamaah di bandara
+       * (BELUM_HADIR, HADIR_BANDARA, NAIK_BUS, BOARDING) dan status koper.
+       */
+      const adaKolom = (tabel: string, kolom: string) =>
+        (db.prepare(`PRAGMA table_info(${tabel})`).all() as { name: string }[]).some((c) => c.name === kolom);
+
+      const tambah = (tabel: string, kolom: string, ddl: string) => {
+        if (!adaKolom(tabel, kolom)) db.exec(`ALTER TABLE ${tabel} ADD COLUMN ${ddl}`);
+      };
+
+      tambah('master_jamaah', 'attendance_status', "attendance_status TEXT DEFAULT 'BELUM_HADIR'");
+      tambah('master_jamaah', 'luggage_tag_code', "luggage_tag_code TEXT");
+    },
+  },
 ];
 
 export type HasilMigrasi = {
