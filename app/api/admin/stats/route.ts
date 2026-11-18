@@ -27,6 +27,23 @@ export async function GET(request: Request) {
       .prepare("SELECT COUNT(*) as c FROM payment_history WHERE status IN ('PENDING','WAITING_APPROVAL')")
       .get() as any;
 
+    const readyCommissions = db
+      .prepare("SELECT COALESCE(SUM(nominal),0) as s FROM commissions WHERE status = 'ELIGIBLE'")
+      .get() as any;
+
+    const passportRisks = db
+      .prepare("SELECT COUNT(*) as c FROM master_jamaah WHERE passport_expiry IS NULL OR passport_expiry = ''")
+      .get() as any;
+
+    const nextBatch = db.prepare(`
+      SELECT b.*, p.name as package_name, p.airline
+        FROM batches b
+        JOIN packages p ON b.package_id = p.id
+       WHERE b.departure_date >= date('now')
+       ORDER BY b.departure_date ASC
+       LIMIT 1
+    `).get() as any;
+
     const recentTransactions = db.prepare(`
       SELECT t.*, j.full_name, j.nik, b.batch_name, p.name as package_name
       FROM transactions t
@@ -49,6 +66,9 @@ export async function GET(request: Request) {
         totalRevenue: totalRevenue.c,
         totalReceivables: totalReceivables.c,
         pendingVerification: pendingVerification.c,
+        readyCommissions: readyCommissions.s,
+        passportRisks: passportRisks.c,
+        nextBatch: nextBatch || null,
       },
       recentTransactions,
     }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
