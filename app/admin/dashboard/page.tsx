@@ -28,7 +28,7 @@ import { EmptyState, StatusBadge, DocBadge, FInput, ToastContainer } from '@/com
 /* ===================== TOAST NOTIFICATION ===================== */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Bed, CheckSquare, FileText, QrCode, MessageSquare, Calculator, Wallet, LayoutDashboard, Users, Package, Boxes, ShoppingBag, Receipt, TrendingUp, Plane, ClipboardList, Building2, ShieldCheck, LogOut, Menu, X, CheckCircle2, Clock, AlertCircle, RefreshCw, BookOpen, CreditCard, FileSpreadsheet, KeyRound, History } from 'lucide-react';
+import { Bed, CheckSquare, FileText, Search, QrCode, MessageSquare, Calculator, Wallet, LayoutDashboard, Users, Package, Boxes, ShoppingBag, Receipt, TrendingUp, Plane, ClipboardList, Building2, ShieldCheck, LogOut, Menu, X, CheckCircle2, Clock, AlertCircle, RefreshCw, BookOpen, CreditCard, FileSpreadsheet, KeyRound, History } from 'lucide-react';
 
 
 
@@ -2240,6 +2240,24 @@ export default function AdminDashboard() {
               <span>{currentTabInfo.icon}</span>
               <span className="truncate">{currentTabInfo.label}</span>
             </h2>
+          </div>
+          <div className="hidden lg:flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+            <Search className="w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Cepat lompat menu... (cth: jamaah, pembayaran, laporan)"
+              onChange={(e) => {
+                const q = e.target.value.toLowerCase();
+                if (q.includes('jamaah')) setActiveTab('jamaah');
+                else if (q.includes('pembayaran')) setActiveTab('pembayaran');
+                else if (q.includes('laporan')) setActiveTab('laporan');
+                else if (q.includes('transaksi')) setActiveTab('transaksi');
+                else if (q.includes('paket')) setActiveTab('paket');
+                else if (q.includes('komisi')) setActiveTab('komisi');
+                else if (q.includes('agen')) setActiveTab('agents');
+              }}
+              className="bg-transparent text-xs outline-none w-64 text-slate-700 placeholder-slate-400"
+            />
           </div>
           <div className="flex items-center gap-2.5 text-right">
             <span className="hidden sm:inline-block text-xs bg-emerald-50 text-emerald-700 font-bold px-2.5 py-1 rounded-full border border-emerald-200">
