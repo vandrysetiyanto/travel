@@ -203,6 +203,24 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Mobile Sticky Bottom Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 p-3 shadow-lg flex items-center justify-between gap-3 md:hidden">
+        <a
+          href="https://wa.me/628123456789?text=Halo%2C%20saya%20ingin%20konsultasi%20paket%20umroh"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 flex-1 shadow-2xs"
+        >
+          💬 WhatsApp
+        </a>
+        <a
+          href="/packages"
+          className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 flex-1 shadow-2xs"
+        >
+          🕋 Pilih Paket
+        </a>
+      </div>
+
       {/* Floating WhatsApp Consultation Button */}
       <a
         href="https://wa.me/628123456789?text=Halo%2C%20saya%20ingin%20konsultasi%20paket%20umroh"
