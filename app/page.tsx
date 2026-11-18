@@ -103,7 +103,7 @@ export default function HomePage() {
                 key={pkg.id}
                 className={`rounded-2xl border p-6 transition flex flex-col justify-between ${
                 isVip
-                  ? 'bg-gradient-to-b from-white via-amber-50/20 to-white border-amber-300/80 shadow-md ring-1 ring-amber-200/40'
+                  ? 'bg-gradient-to-b from-white via-amber-50/20 to-white border-amber-300/80 card-luxury-hover animate-fade-in ring-1 ring-amber-200/50 shadow-lg'
                   : 'bg-white border-slate-200/80 shadow-xs hover:border-slate-300'
               }`}
               >
