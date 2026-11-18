@@ -49,10 +49,8 @@ function DashboardTab({ isOwner, setActiveTab }: { isOwner: boolean; setActiveTa
 
   return (
     <div className="space-y-6">
-      <QuickActionsBar setActiveTab={setActiveTab} pendingVerification={stats.pendingVerification || 0} readyCommissions={stats.readyCommissions || 0} />
-      <ActionableAlertsBanner stats={stats} setActiveTab={setActiveTab} />
+      {/* Fitur QuickActions, ActionableAlerts, dan RevenueChart di-hide sementara sesuai instruksi */}
       <PrimaryMetricCards isOwner={isOwner} stats={stats} />
-      <RevenueTrendChart isOwner={isOwner} monthly={monthly} />
       <RecentTransactionsTable recent={recent} />
     </div>
   );
