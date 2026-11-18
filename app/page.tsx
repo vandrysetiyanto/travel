@@ -5,7 +5,7 @@ import db from '@/lib/db';
 import { formatRupiah } from '@/lib/utils';
 import { ShieldCheck, Clock, Plane, ArrowRight, Star, Building, Check, Sparkles } from 'lucide-react';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 export default function HomePage() {
   const packages = db.prepare('SELECT * FROM packages WHERE is_active = 1 ORDER BY price ASC LIMIT 3').all() as any[];
