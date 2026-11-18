@@ -1,4 +1,5 @@
 'use client';
+import { generateBrochure } from '@/lib/pdf-brochure';
 
 /**
  * Modul dashboard: master
@@ -348,7 +349,8 @@ export function MasterPaket() {
                 <td className="p-3 text-slate-600">{p.duration_days} hari</td>
                 <td className="p-3 text-slate-600">{p.hotel_makkah} / {p.hotel_madinah}</td>
                 <td className="p-3 text-slate-600">{p.airline}</td>
-                <td className="p-3 text-right">
+                <td className="p-3 text-right space-x-2">
+                  <button onClick={()=>generateBrochure(p)} className="text-emerald-600 hover:underline font-bold">Brosur PDF</button>
                   <button onClick={()=>{setForm(p);setPkgMode('edit');}} className="text-indigo-600 hover:underline font-bold">Edit</button>
                 </td>
               </tr>
