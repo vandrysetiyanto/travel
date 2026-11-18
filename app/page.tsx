@@ -310,7 +310,7 @@ export default function HomePage() {
         href="https://wa.me/628123456789?text=Halo%2C%20saya%20ingin%20konsultasi%20paket%20umroh"
         target="_blank"
         rel="noopener noreferrer"
-        className="fixed bottom-6 right-6 z-50 bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-full shadow-lg transition flex items-center justify-center hover:scale-105 active:scale-95"
+        className="hidden md:flex fixed bottom-6 right-6 z-50 bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-full shadow-lg transition flex items-center justify-center hover:scale-105 active:scale-95"
         aria-label="Konsultasi WhatsApp"
       >
         <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24">
