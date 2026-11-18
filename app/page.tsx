@@ -3,7 +3,7 @@ import Footer from '@/components/Footer';
 import Link from 'next/link';
 import db from '@/lib/db';
 import { formatRupiah } from '@/lib/utils';
-import { ShieldCheck, Clock, Plane, ArrowRight, Star, Building, Check, Sparkles } from 'lucide-react';
+import { ShieldCheck, Clock, Plane, ArrowRight, Building, Sparkles, HelpCircle } from 'lucide-react';
 
 export const revalidate = 30;
 
@@ -20,25 +20,25 @@ export default function HomePage() {
     <div className="flex flex-col min-h-screen bg-[#fafafa] text-slate-900 selection:bg-slate-900 selection:text-white">
       <Navbar />
 
-      {/* Hero Section — Minimalist Editorial */}
+      {/* Hero Section — Minimalist Editorial & Humanized */}
       <section className="relative pt-12 pb-16 sm:pt-20 sm:pb-24 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto w-full text-center">
         {/* Subtle Badge */}
         <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-100 border border-slate-200/80 text-slate-700 text-xs font-semibold mb-6 shadow-2xs">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
           <span>Izin Resmi PPIU Kemenag RI</span>
           <span className="text-slate-300">•</span>
-          <span className="text-slate-500 font-normal">Pasti Berangkat</span>
+          <span className="text-slate-500 font-normal">Pasti Berangkat & Amanah</span>
         </div>
 
         {/* Hero Title */}
         <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-slate-900 leading-[1.08] max-w-4xl mx-auto">
-          Ibadah Umroh Nyaman, <br className="hidden sm:inline" />
-          <span className="text-slate-500 font-medium">Khusyuk & Terencana.</span>
+          Wujudkan Niat Suci Anda,<br className="hidden sm:inline" />
+          <span className="text-slate-500 font-medium">Ibadah Khusyuk & Terencana.</span>
         </h1>
 
         {/* Hero Subtitle */}
         <p className="mt-6 text-base sm:text-lg text-slate-600 max-w-2xl mx-auto font-normal leading-relaxed">
-          Akomodasi hotel bintang 4 & 5 dekat Masjidil Haram, penerbangan langsung tanpa transit, dan kepastian jadwal keberangkatan secara transparan.
+          Kami mendampingi setiap langkah perjalanan ibadah umroh Anda dengan akomodasi hotel bintang di dekat Masjidil Haram, penerbangan langsung, dan bimbingan ibadah sesuai sunnah.
         </p>
 
         {/* Action Buttons */}
@@ -58,8 +58,19 @@ export default function HomePage() {
           </Link>
         </div>
 
-        {/* 4 Trust Highlights (Ultra Minimalist Grid) */}
-        <div className="mt-16 pt-10 border-t border-slate-200/60 grid grid-cols-2 md:grid-cols-4 gap-6 text-left">
+        {/* Trust & Partner Logos Bar */}
+        <div className="mt-14 pt-8 border-t border-slate-200/60">
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-6">Didukung Maskapai & Mitra Terpercaya</p>
+          <div className="flex flex-wrap items-center justify-center gap-8 sm:gap-12 opacity-80 grayscale hover:grayscale-0 transition duration-300">
+            <span className="font-extrabold text-sm tracking-tight text-slate-700"> Garuda Indonesia</span>
+            <span className="font-extrabold text-sm tracking-tight text-slate-700">✈️ SAUDIA AIRLINES</span>
+            <span className="font-extrabold text-sm tracking-tight text-slate-700">🏛️ BANK SYARIAH INDONESIA</span>
+            <span className="font-extrabold text-sm tracking-tight text-slate-700">🏦 BCA SYARIAH</span>
+          </div>
+        </div>
+
+        {/* 4 Trust Highlights */}
+        <div className="mt-12 pt-10 border-t border-slate-200/60 grid grid-cols-2 md:grid-cols-4 gap-6 text-left">
           <div className="space-y-1">
             <p className="text-xs font-bold text-slate-900 uppercase tracking-wider">Izin Resmi</p>
             <p className="text-xs text-slate-500">Akreditasi Kemenag RI</p>
@@ -104,13 +115,13 @@ export default function HomePage() {
                 className={`rounded-2xl border p-6 transition flex flex-col justify-between ${
                 isVip
                   ? 'bg-gradient-to-b from-white via-amber-50/20 to-white border-amber-300/80 card-luxury-hover animate-fade-in ring-1 ring-amber-200/50 shadow-lg'
-                  : 'bg-white border-slate-200/80 shadow-xs hover:border-slate-300'
+                  : 'bg-white border-slate-200/80 shadow-xs hover:border-slate-300 card-luxury-hover animate-fade-in'
               }`}
               >
                 <div className="space-y-4">
                   {/* Category & Badge */}
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2.5 py-1 rounded-md bg-slate-100">
                       {pkg.category}
                     </span>
                     {isVip && (
@@ -181,6 +192,46 @@ export default function HomePage() {
               </div>
             );
           })}
+        </div>
+      </section>
+
+      {/* FAQ Section (Trust & Transparency) */}
+      <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 w-full">
+        <div className="text-center mb-8">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Pertanyaan Umum</span>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight mt-1">Hal yang Sering Ditanyakan Jamaah</h2>
+        </div>
+
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs">
+            <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              Bagaimana cara mendaftar dan memilih jadwal keberangkatan?
+            </h3>
+            <p className="mt-2 text-xs text-slate-600 leading-relaxed pl-6">
+              Anda dapat memilih paket di halaman katalog, lalu klik tombol "Daftar Sekarang" untuk mengisi data diri jamaah. Sistem kami akan otomatis mencatat pemesanan dan memberikan kode booking serta rincian pembayaran.
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs">
+            <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              Apakah pembayaran DP dan pelunasan dapat dicicil?
+            </h3>
+            <p className="mt-2 text-xs text-slate-600 leading-relaxed pl-6">
+              Ya, jamaah dapat melakukan pembayaran awal (*DP*) sesuai ketentuan paket, dan sisa pelunasan dapat dicicil secara bertahap sebelum batas akhir manifest keberangkatan.
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs">
+            <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              Apakah harga paket sudah termasuk tiket pesawat dan akomodasi?
+            </h3>
+            <p className="mt-2 text-xs text-slate-600 leading-relaxed pl-6">
+              Semua paket kami bersifat transparan. Harga yang tertera sudah mencakup tiket pesawat pulang-pergi (*direct flight*), hotel di Makkah & Madinah, konsumsi 3 kali sehari, visa umroh, serta bimbingan ibadah lengkap.
+            </p>
+          </div>
         </div>
       </section>
 
