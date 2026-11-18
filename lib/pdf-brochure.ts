@@ -1,5 +1,5 @@
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export function generateBrochure(pkg: any) {
   const doc = new jsPDF();
@@ -19,7 +19,7 @@ export function generateBrochure(pkg: any) {
 
   // Tabel Detail / Fasilitas
   const startY = 45;
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY,
     head: [['Komponen', 'Keterangan']],
     body: [
@@ -36,7 +36,7 @@ export function generateBrochure(pkg: any) {
   });
 
   // Deskripsi & Fasilitas
-  const finalY = (doc as any).lastAutoTable.finalY + 10;
+  const finalY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 10 : 120;
   doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
   doc.text('Fasilitas & Keterangan Paket:', 14, finalY);
@@ -51,5 +51,5 @@ export function generateBrochure(pkg: any) {
   doc.setTextColor(148, 163, 184);
   doc.text('Dicetak dari Sistem Al-Barakah Tour & Travel — Dokumen Sah', 14, 285);
 
-  doc.save(`Brosur-${(pkg.name || 'Paket').replace(/\\s+/g, '-')}.pdf`);
+  doc.save(`Brosur-${(pkg.name || 'Paket').replace(/\s+/g, '-')}.pdf`);
 }
