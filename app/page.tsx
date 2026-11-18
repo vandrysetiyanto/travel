@@ -9,6 +9,7 @@ export const revalidate = 30;
 
 export default function HomePage() {
   const packages = db.prepare('SELECT * FROM packages WHERE is_active = 1 ORDER BY price ASC LIMIT 3').all() as any[];
+  const testimonials = db.prepare('SELECT * FROM testimonials WHERE status = \'APPROVED\' ORDER BY id DESC LIMIT 3').all() as any[];
   const batches = db.prepare(`
     SELECT b.*, 
       (SELECT COUNT(*) FROM transactions t WHERE t.batch_id = b.id AND t.status != 'CANCELLED') as filled_quota
@@ -194,6 +195,36 @@ export default function HomePage() {
           })}
         </div>
       </section>
+
+      {/* Testimonials Section (Social Proof) */}
+      {testimonials.length > 0 && (
+        <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 w-full">
+          <div className="text-center mb-10">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Testimoni Jamaah</span>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight mt-1">Cerita & Pengalaman Perjalanan Suci</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {testimonials.map((t: any) => (
+              <div key={t.id} className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs flex flex-col justify-between card-luxury-hover animate-fade-in">
+                <div className="space-y-4">
+                  <div className="flex items-center text-amber-400 gap-0.5">
+                    {[...Array(t.rating || 5)].map((_, i) => (
+                      <svg key={i} className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.787 1.399 8.168-7.333-3.854-7.333 3.854 1.399-8.168-5.934-5.787 8.2-1.192z"/></svg>
+                    ))}
+                  </div>
+                  <p className="text-xs text-slate-700 italic leading-relaxed">&ldquo;{t.comment}&rdquo;</p>
+                </div>
+                <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="font-bold text-slate-900 block">{t.pilgrim_name}</span>
+                    <span className="text-[10px] text-slate-400">{t.city} • {t.package_name}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* FAQ Section (Trust & Transparency) */}
       <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 w-full">

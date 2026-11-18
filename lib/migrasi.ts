@@ -383,6 +383,25 @@ export const MIGRATIONS: Migrasi[] = [
       tambah('master_jamaah', 'luggage_tag_code', "luggage_tag_code TEXT");
     },
   },
+  {
+    nomor: 10,
+    nama: 'testimonials-table',
+    jalankan: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS testimonials (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          booking_code TEXT,
+          pilgrim_name TEXT NOT NULL,
+          city TEXT,
+          package_name TEXT,
+          rating INTEGER DEFAULT 5,
+          comment TEXT NOT NULL,
+          status TEXT DEFAULT 'PENDING',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+    },
+  },
 ];
 
 export type HasilMigrasi = {

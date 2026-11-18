@@ -17,6 +17,7 @@ import { KesiapanKloterTab } from '@/components/dashboard/kesiapan-kloter';
 import { RoomingListTab } from '@/components/dashboard/rooming-list';
 import { TrackingDokumenTab } from '@/components/dashboard/tracking-dokumen';
 import { PresensiBandaraTab } from '@/components/dashboard/presensi-bandara';
+import { TestimonialsTab } from '@/components/dashboard/testimonials';
 import { MasterAgenTab, KomisiAgenTab } from '@/components/dashboard/agen';
 
 import { EmptyState, StatusBadge, DocBadge, FInput, ToastContainer } from '@/components/dashboard/ui-dasar';
@@ -27,12 +28,12 @@ import { EmptyState, StatusBadge, DocBadge, FInput, ToastContainer } from '@/com
 /* ===================== TOAST NOTIFICATION ===================== */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Bed, CheckSquare, FileText, QrCode, Calculator, Wallet, LayoutDashboard, Users, Package, Boxes, ShoppingBag, Receipt, TrendingUp, Plane, ClipboardList, Building2, ShieldCheck, LogOut, Menu, X, CheckCircle2, Clock, AlertCircle, RefreshCw, BookOpen, CreditCard, FileSpreadsheet, KeyRound, History } from 'lucide-react';
+import { Bed, CheckSquare, FileText, QrCode, MessageSquare, Calculator, Wallet, LayoutDashboard, Users, Package, Boxes, ShoppingBag, Receipt, TrendingUp, Plane, ClipboardList, Building2, ShieldCheck, LogOut, Menu, X, CheckCircle2, Clock, AlertCircle, RefreshCw, BookOpen, CreditCard, FileSpreadsheet, KeyRound, History } from 'lucide-react';
 
 
 
 
-type Tab = 'dashboard' | 'riwayat-jamaah' | 'laba-rugi-kloter' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings' | 'agents' | 'komisi' | 'kesiapan-kloter' | 'rooming-list' | 'tracking-dokumen' | 'presensi-bandara';
+type Tab = 'dashboard' | 'riwayat-jamaah' | 'laba-rugi-kloter' | 'jamaah' | 'paket' | 'batches' | 'inventory' | 'master-coa' | 'transaksi' | 'manifest' | 'checklist' | 'laporan' | 'pembayaran' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'ledger' | 'stock-ledger' | 'general-journal' | 'expenses' | 'registrations' | 'staf' | 'roles' | 'audit' | 'settings' | 'agents' | 'komisi' | 'kesiapan-kloter' | 'rooming-list' | 'tracking-dokumen' | 'presensi-bandara' | 'testimonials';
 type MasterSub = 'jamaah' | 'paket' | 'inventaris';
 
 /* ===================== DASHBOARD TAB ===================== */
@@ -1995,6 +1996,7 @@ export default function AdminDashboard() {
         { id: 'rooming-list' as Tab, perm: 'report.operational', icon: <Bed className="w-4 h-4" />, label: 'Rooming List Hotel' },
         { id: 'tracking-dokumen' as Tab, perm: 'report.operational', icon: <FileText className="w-4 h-4" />, label: 'Tracking Fisik Dokumen' },
         { id: 'presensi-bandara' as Tab, perm: 'report.operational', icon: <QrCode className="w-4 h-4" />, label: 'Presensi & Koper Bandara' },
+        { id: 'testimonials' as Tab, perm: 'report.operational', icon: <MessageSquare className="w-4 h-4" />, label: 'Ulasan & Testimoni' },
         { id: 'registrations', perm: 'booking.read', icon: <ClipboardList className="w-4 h-4" />, label: 'Registrasi Online' },
         { id: 'checklist' as Tab, perm: 'checklist.read', icon: <CheckSquare className="w-4 h-4" />, label: 'Checklist Kelengkapan' },
       ],
@@ -2190,7 +2192,7 @@ export default function AdminDashboard() {
                           {(sideOpen || mobileMenuOpen) && (
                             <span className="truncate inline-flex items-center">
                               {item.label}
-                              {['agents', 'komisi', 'kesiapan-kloter', 'laba-rugi-kloter', 'rooming-list', 'tracking-dokumen', 'presensi-bandara'].includes(item.id) && <NewBadge releaseDate="2026-11-14" />}
+                              {['agents', 'komisi', 'kesiapan-kloter', 'laba-rugi-kloter', 'rooming-list', 'tracking-dokumen', 'presensi-bandara', 'testimonials'].includes(item.id) && <NewBadge releaseDate="2026-11-14" />}
                             </span>
                           )}
                         </button>
@@ -2264,6 +2266,7 @@ export default function AdminDashboard() {
           {activeTab === 'rooming-list' && <RoomingListTab />}
           {activeTab === 'tracking-dokumen' && <TrackingDokumenTab />}
           {activeTab === 'presensi-bandara' && <PresensiBandaraTab />}
+          {activeTab === 'testimonials' && <TestimonialsTab />}
           {activeTab === 'staf' && has('staff.manage') && <KelolaStaf />}
           {activeTab === 'roles' && has('staff.manage') && <KelolaIzinRole />}
           {activeTab === 'audit' && has('audit.read') && <LogAktivitas />}
