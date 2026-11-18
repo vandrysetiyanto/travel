@@ -7,6 +7,7 @@ import { LaporanTab, LedgerTab, StockLedgerTab, GeneralJournalTab } from '@/comp
 import { ChecklistTab, ManifestTab, RegistrationsTab } from '@/components/dashboard/operasional';
 import { RiwayatJamaahTab } from '@/components/dashboard/riwayat-jamaah';
 import { LabaRugiKloterTab } from '@/components/dashboard/laba-rugi-kloter';
+import { NewBadge } from '@/components/dashboard/new-badge';
 import { KesiapanKloterTab } from '@/components/dashboard/kesiapan-kloter';
 import { MasterAgenTab, KomisiAgenTab } from '@/components/dashboard/agen';
 
@@ -2240,7 +2241,12 @@ export default function AdminDashboard() {
                           }`}
                         >
                           <span className={`shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`}>{item.icon}</span>
-                          {(sideOpen || mobileMenuOpen) && <span className="truncate">{item.label}</span>}
+                          {(sideOpen || mobileMenuOpen) && (
+                            <span className="truncate inline-flex items-center">
+                              {item.label}
+                              {['agents', 'komisi', 'kesiapan-kloter', 'laba-rugi-kloter'].includes(item.id) && <NewBadge releaseDate="2026-11-14" />}
+                            </span>
+                          )}
                         </button>
                       );
                     })}
