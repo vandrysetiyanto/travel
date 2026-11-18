@@ -6,15 +6,21 @@ import { requirePermission } from '@/lib/permissions';
 
 initDB();
 
-// WAJIB: tanpa ini Next mem-prerender route ini saat build dan membekukan
-// respons "semua nol" ke disk, sehingga kartu dashboard tidak pernah berubah.
 export const dynamic = 'force-dynamic';
+
+let memoryCache: { data: any; time: number } | null = null;
+const CACHE_TTL_MS = 5000; // 5 detik
 
 export async function GET(request: Request) {
   const auth = await requirePermission(request, 'report.finance');
   if (!auth.ok) return auth.response;
 
   try {
+    const now = Date.now();
+    if (memoryCache && (now - memoryCache.time < CACHE_TTL_MS)) {
+      return NextResponse.json(memoryCache.data, { headers: { 'Cache-Control': 'public, max-age=5' } });
+    }
+
     const totalJamaah = db.prepare('SELECT COUNT(*) as c FROM master_jamaah').get() as any;
     const totalTransactions = db.prepare('SELECT COUNT(*) as c FROM transactions').get() as any;
     const paidCount = db.prepare("SELECT COUNT(*) as c FROM transactions WHERE status = 'PAID'").get() as any;
@@ -69,9 +75,7 @@ export async function GET(request: Request) {
       ORDER BY t.created_at DESC LIMIT 10
     `).all();
 
-    // Defense in depth: DB sudah dinamis, header ini menjamin angka statistik
-    // tidak pernah disajikan dari cache (dulu endpoint ini ikut di-prerender statis).
-    return NextResponse.json({
+    const payload = {
       success: true,
       stats: {
         totalJamaah: totalJamaah.c,
@@ -88,7 +92,10 @@ export async function GET(request: Request) {
       },
       recentTransactions,
       monthlyRevenue,
-    }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
+    };
+
+    memoryCache = { data: payload, time: Date.now() };
+    return NextResponse.json(payload, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch (error: any) {
     return galatServer(error, { bagian: 'admin/stats' });
   }
