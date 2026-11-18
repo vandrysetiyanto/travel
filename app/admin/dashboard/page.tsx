@@ -8,6 +8,11 @@ import { ChecklistTab, ManifestTab, RegistrationsTab } from '@/components/dashbo
 import { RiwayatJamaahTab } from '@/components/dashboard/riwayat-jamaah';
 import { LabaRugiKloterTab } from '@/components/dashboard/laba-rugi-kloter';
 import { NewBadge } from '@/components/dashboard/new-badge';
+import { QuickActionsBar } from '@/components/dashboard/widgets/quick-actions';
+import { ActionableAlertsBanner } from '@/components/dashboard/widgets/actionable-alerts';
+import { PrimaryMetricCards } from '@/components/dashboard/widgets/metric-cards';
+import { RevenueTrendChart } from '@/components/dashboard/widgets/revenue-chart';
+import { RecentTransactionsTable } from '@/components/dashboard/widgets/recent-transactions';
 import { KesiapanKloterTab } from '@/components/dashboard/kesiapan-kloter';
 import { RoomingListTab } from '@/components/dashboard/rooming-list';
 import { TrackingDokumenTab } from '@/components/dashboard/tracking-dokumen';
@@ -41,191 +46,18 @@ function DashboardTab({ isOwner, setActiveTab }: { isOwner: boolean; setActiveTa
     });
   }, []);
   if (!stats) return <p className="text-center py-12 text-gray-500">Memuat data...</p>;
-  const primaryCards = [
-    ...(isOwner ? [
-      { label: 'Total Omset', value: fmtRp(stats.totalRevenue), hint: 'Pendapatan bruto paket', color: 'text-slate-900' },
-      { label: 'Total Piutang', value: fmtRp(stats.totalReceivables), hint: 'Sisa tagihan berjalan', color: 'text-amber-600' },
-    ] : []),
-    { label: 'Total Jamaah', value: fmt(stats.totalJamaah) + ' Orang', hint: 'Jamaah terdaftar', color: 'text-slate-900' },
-    { label: 'Total Transaksi', value: fmt(stats.totalTransactions) + ' Trx', hint: 'Akumulasi booking', color: 'text-slate-900' },
-  ];
-
-  const statusCards = [
-    { label: 'Lunas', value: fmt(stats.paidCount), badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-    { label: 'Sudah DP', value: fmt(stats.dpCount), badge: 'bg-amber-50 text-amber-700 border-amber-200' },
-    { label: 'Pending Tagihan', value: fmt(stats.pendingCount), badge: 'bg-rose-50 text-rose-700 border-rose-200' },
-  ];
 
   return (
     <div className="space-y-6">
-      {/* Quick Action Shortcuts */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
-        <span className="text-xs font-bold text-slate-700">⚡ Pintasan Cepat:</span>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => setActiveTab('transaksi')} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition">
-            🛍️ Buat / Cek Transaksi
-          </button>
-          <button onClick={() => setActiveTab('pembayaran')} className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
-            🧾 Verifikasi Bayar {stats.pendingVerification > 0 && <span className="px-1.5 py-0.2 bg-amber-600 text-white rounded-full text-[10px]">{stats.pendingVerification}</span>}
-          </button>
-          <button onClick={() => setActiveTab('komisi')} className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
-            💸 Pencairan Komisi {stats.readyCommissions > 0 && <span className="px-1.5 py-0.2 bg-emerald-600 text-white rounded-full text-[10px]">{fmtRp(stats.readyCommissions)}</span>}
-          </button>
-          <button onClick={() => setActiveTab('kesiapan-kloter')} className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 rounded-xl text-xs font-bold transition">
-            ✈️ Kesiapan Kloter
-          </button>
-        </div>
-      </div>
-
-      {/* Actionable Alerts & Next Batch Banner */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between">
-          <div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-indigo-300">🚀 Kloter Keberangkatan Terdekat</span>
-            {stats.nextBatch ? (
-              <div className="mt-2">
-                <h4 className="text-base font-black">{stats.nextBatch.batch_name}</h4>
-                <p className="text-xs text-indigo-200 mt-0.5">{stats.nextBatch.package_name}</p>
-                <p className="text-xs font-mono text-emerald-400 mt-2 font-bold">📅 {stats.nextBatch.departure_date}</p>
-              </div>
-            ) : (
-              <p className="text-xs text-slate-400 mt-2">Tidak ada jadwal keberangkatan terdekat.</p>
-            )}
-          </div>
-          {stats.nextBatch && (
-            <button onClick={() => setActiveTab('kesiapan-kloter')} className="mt-4 text-xs font-bold text-indigo-300 hover:text-white underline text-left">
-              Lihat Kesiapan Kloter &rarr;
-            </button>
-          )}
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">⚠️ Perhatian & Peringatan</span>
-            <div className="mt-2 space-y-2 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-600">Pembayaran Menunggu Verifikasi:</span>
-                <span className={`font-bold font-mono ${stats.pendingVerification > 0 ? 'text-amber-600' : 'text-slate-600'}`}>{stats.pendingVerification} Trx</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-600">Komisi Siap Dicairkan:</span>
-                <span className="font-bold font-mono text-emerald-600">{fmtRp(stats.readyCommissions || 0)}</span>
-              </div>
-            </div>
-          </div>
-          <button onClick={() => setActiveTab('pembayaran')} className="mt-4 text-xs font-bold text-emerald-600 hover:underline text-left">
-            Kelola Antrean &rarr;
-          </button>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">🛂 Dokumen & Paspor</span>
-            <div className="mt-2 space-y-2 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-600">Paspor Belum / Perlu Dilengkapi:</span>
-                <span className="font-bold font-mono text-rose-600">{stats.passportRisks || 0} Jamaah</span>
-              </div>
-            </div>
-          </div>
-          <button onClick={() => setActiveTab('tracking-dokumen')} className="mt-4 text-xs font-bold text-indigo-600 hover:underline text-left">
-            Buka Tracking Dokumen &rarr;
-          </button>
-        </div>
-      </div>
-
-      {/* Linear Style Primary Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {primaryCards.map((c, i) => (
-          <div key={i} className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-slate-300 transition flex flex-col justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{c.label}</span>
-            <div className="my-2">
-              <p className={`text-2xl font-black tracking-tight ${c.color}`}>{c.value}</p>
-            </div>
-            <p className="text-[11px] text-slate-400 font-medium">{c.hint}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Secondary Status Breakdown Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {statusCards.map((c, i) => (
-          <div key={i} className="bg-white border border-slate-200/70 rounded-xl px-4 py-3 flex items-center justify-between shadow-2xs">
-            <span className="text-xs font-semibold text-slate-600">{c.label}</span>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${c.badge}`}>{c.value}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Visual Chart: Tren Omset Bulanan */}
-      {isOwner && monthly.length > 0 && (() => {
-        const maxAmt = Math.max(...monthly.map((m: any) => m.amount), 1);
-        return (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">📈 Tren Omset & Penerimaan Bulanan</h3>
-                <p className="text-xs text-slate-500">Akumulasi penerimaan pembayaran terverifikasi dalam beberapa bulan terakhir.</p>
-              </div>
-            </div>
-            <div className="h-48 flex items-end gap-3 pt-6 pb-2 px-2 border-b border-slate-100">
-              {monthly.map((m: any, idx: number) => {
-                const heightPct = Math.max(12, Math.round((m.amount / maxAmt) * 100));
-                return (
-                  <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group relative">
-                    {/* Tooltip */}
-                    <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition bg-slate-900 text-white text-[10px] font-mono py-1 px-2 rounded-lg pointer-events-none whitespace-nowrap shadow-md z-10">
-                      {m.label}: {fmtRp(m.amount)}
-                    </div>
-                    <span className="text-[10px] font-mono font-bold text-slate-600 group-hover:text-emerald-600 transition">
-                      {m.amount > 0 ? (m.amount >= 1e6 ? `${(m.amount/1e6).toFixed(1)}jt` : fmtRp(m.amount)) : '0'}
-                    </span>
-                    <div className="w-full bg-emerald-500/90 group-hover:bg-emerald-600 rounded-t-xl transition-all duration-300" style={{ height: `${heightPct}%` }}></div>
-                    <span className="text-[11px] font-bold text-slate-500 mt-1 truncate max-w-full">{m.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
-      <div className="bg-white rounded-xl shadow p-6">
-        <h3 className="font-bold text-gray-800 mb-4">Transaksi Terbaru</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="bg-gray-50 text-left">
-              <th className="p-3">Kode</th><th className="p-3">Jamaah</th><th className="p-3">Paket</th>
-              <th className="p-3">Total</th><th className="p-3">Dibayar</th><th className="p-3">Status</th><th className="p-3">Tanggal</th>
-            </tr></thead>
-            <tbody>
-              {recent.map((t: any) => (
-                <tr key={t.id} className="border-b hover:bg-gray-50">
-                  <td className="p-3 font-mono text-xs">{t.booking_code}</td>
-                  <td className="p-3">{t.full_name}</td>
-                  <td className="p-3 text-xs">{t.package_name}</td>
-                  <td className="p-3">{fmtRp(t.total_amount)}</td>
-                  <td className="p-3">{fmtRp(t.paid_amount)}</td>
-                  <td className="p-3"><StatusBadge s={t.status} /></td>
-                  <td className="p-3 text-xs">{t.created_at}</td>
-                </tr>
-              ))}
-              {recent.length === 0 && <tr><td colSpan={7}><EmptyState icon="" title="Belum Ada Transaksi" description="Belum ada riwayat transaksi atau booking umroh yang tercatat di sistem." /></td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <QuickActionsBar setActiveTab={setActiveTab} pendingVerification={stats.pendingVerification || 0} readyCommissions={stats.readyCommissions || 0} />
+      <ActionableAlertsBanner stats={stats} setActiveTab={setActiveTab} />
+      <PrimaryMetricCards isOwner={isOwner} stats={stats} />
+      <RevenueTrendChart isOwner={isOwner} monthly={monthly} />
+      <RecentTransactionsTable recent={recent} />
     </div>
   );
 }
 
-
-
-/* Field input generik untuk form master. WAJIB di level modul (BUKAN di dalam
-   komponen): kalau dideklarasikan di dalam, React menganggapnya tipe komponen
-   baru tiap render -> <input> di-unmount & di-mount ulang tiap ketikan ->
-   fokus hilang dan kursor melompat. */
-
-/* ===================== MASTER TAB ===================== */
 function MasterTab({ sub, setSub }: { sub: MasterSub; setSub: (s: MasterSub) => void }) {
   const tabs: { id: MasterSub; label: string }[] = [
     { id: 'jamaah', label: ' Master Jamaah' },
