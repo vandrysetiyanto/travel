@@ -1890,6 +1890,8 @@ export default function AdminDashboard() {
     }
   }, [activeTab]);
   const [sideOpen, setSideOpen] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     'Master Data': true,
     'Transaksi & Keuangan': true,
@@ -2241,23 +2243,47 @@ export default function AdminDashboard() {
               <span className="truncate">{currentTabInfo.label}</span>
             </h2>
           </div>
-          <div className="hidden lg:flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
-            <Search className="w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Cepat lompat menu... (cth: jamaah, pembayaran, laporan)"
-              onChange={(e) => {
-                const q = e.target.value.toLowerCase();
-                if (q.includes('jamaah')) setActiveTab('jamaah');
-                else if (q.includes('pembayaran')) setActiveTab('pembayaran');
-                else if (q.includes('laporan')) setActiveTab('laporan');
-                else if (q.includes('transaksi')) setActiveTab('transaksi');
-                else if (q.includes('paket')) setActiveTab('paket');
-                else if (q.includes('komisi')) setActiveTab('komisi');
-                else if (q.includes('agen')) setActiveTab('agents');
-              }}
-              className="bg-transparent text-xs outline-none w-64 text-slate-700 placeholder-slate-400"
-            />
+          <div className="relative hidden lg:block">
+            <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+              <Search className="w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Cari menu cepat... (cth: jamaah, laporan)"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setSearchOpen(true);
+                }}
+                onFocus={() => setSearchOpen(true)}
+                className="bg-transparent text-xs outline-none w-64 text-slate-700 placeholder-slate-400"
+              />
+            </div>
+
+            {searchOpen && searchQuery.trim() !== '' && (
+              <div className="absolute top-full mt-2 left-0 right-0 bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden z-50 py-2">
+                {allItems
+                  .filter(item => item.label.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .slice(0, 6)
+                  .map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setSearchQuery('');
+                        setSearchOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-center gap-2.5 text-xs font-semibold text-slate-700 transition"
+                    >
+                      <span className="text-slate-400">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  ))
+                }
+                {allItems.filter(item => item.label.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+                  <div className="px-4 py-3 text-xs text-slate-400 text-center">Menu tidak ditemukan</div>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2.5 text-right">
             <span className="hidden sm:inline-block text-xs bg-emerald-50 text-emerald-700 font-bold px-2.5 py-1 rounded-full border border-emerald-200">
